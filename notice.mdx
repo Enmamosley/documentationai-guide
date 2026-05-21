@@ -45,6 +45,28 @@ WCG App está deployada en https://wcg-app-v2.vercel.app con datos reales en Sup
   </Step>
 </Steps>
 
+## Backlog explícito (descubierto en la auditoría doc-vs-código del 2026-05-21)
+
+Estas features estaban prometidas en la documentación pero no implementadas. La doc ya quedó honesta; los items siguen como pendientes:
+
+<Steps>
+  <Step title="cancelarOSAction" icon="x-circle" title-type="p">
+    El estado `Cancelada` existe en el enum `os_estado` pero no hay action ni UI que transicione la OS hacia él. Si el técnico se da cuenta tarde que la OS no aplica (cliente no estaba, dirección errónea), no hay forma elegante de cerrarla.
+  </Step>
+  <Step title="Crear y desactivar usuarios desde admin UI" icon="user-x" title-type="p">
+    Hoy un admin puede cambiar rol/tecnico_id en `/sistema`, pero no puede dar de alta cuentas nuevas ni desactivar las existentes. La alta pasa por signup de Supabase (arranca como `tecnico`); la baja requiere ir al dashboard de Supabase Auth a mano.
+  </Step>
+  <Step title="Editor de programa de obra" icon="bar-chart-2" title-type="p">
+    `/programa-obra` es read-only. Crear/editar compromisos del Gantt se hace en DB directo. Falta UI.
+  </Step>
+  <Step title="Motivo en marcarEMURechazadoAction" icon="message-square" title-type="p">
+    El action acepta sólo `emuId`. CARSO suele rechazar con razón (concepto mal, técnico ajeno, factura ya cobrada) — convendría persistir el motivo.
+  </Step>
+  <Step title="Crear factura emitida desde la UI" icon="file-plus" title-type="p">
+    Hoy las facturas vienen importadas de seed. Para emitir una factura nueva hay que insertar en `facturas_emitidas` desde DB. Falta UI de "Nueva factura" + integración con el flujo de selección de EMUs.
+  </Step>
+</Steps>
+
 ## Carpetas hermanas (no son código)
 
 ```

@@ -106,21 +106,22 @@ admin · almacenista · operaciones · contable · tecnico
 
 ## Por qué el técnico ve sólo lo suyo
 
-Para el rol `tecnico`, las RLS policies relevantes filtran por `auth.uid()`. Esto aplica **tanto a SELECT como a INSERT/UPDATE** desde el parche D (commit `d141f9f`):
+Para el rol `tecnico`, las RLS policies filtran por su `tecnico_id` resuelto desde `user_profiles`. La función helper es **`current_user_tecnico_id()`** (NO `tecnicos.user_id` — la tabla `tecnicos` no tiene esa columna; el vínculo vive en `user_profiles.tecnico_id`).
 
 ```sql
-CREATE POLICY tecnico_only_self ON os
-  FOR SELECT USING (
-    current_user_role() != 'tecnico'
-    OR EXISTS (
-      SELECT 1 FROM tecnicos
-      WHERE tecnicos.id = os.tecnico_id
-      AND tecnicos.user_id = auth.uid()
-    )
-  );
+-- Helper (existe en DB)
+CREATE FUNCTION current_user_tecnico_id() RETURNS text AS $$
+  SELECT tecnico_id FROM user_profiles WHERE id = auth.uid()
+$$ LANGUAGE sql STABLE;
+
+-- Patrón típico en SELECT policies post-D
+CREATE POLICY "Tecnico lee sus OS" ON os
+  FOR SELECT TO authenticated
+  USING (current_user_role() = 'tecnico'
+         AND tecnico_id = current_user_tecnico_id());
 ```
 
-Esto se replica en `onts`, `emu_rows`, `inventory`, `tecnicos_expediente`, `tecnicos_herramienta`, `tecnicos_vehiculo`, `documentos`, etc. El técnico no necesita filtros en la UI — Postgres ya devuelve sólo sus filas.
+Este patrón se replica en `onts`, `emu_rows`, `inventory`, `tecnicos_expediente`, `tecnicos_herramienta`, `tecnicos_vehiculo`, `documentos`, `salidas_tecnico`. El técnico no necesita filtros en la UI — Postgres ya devuelve sólo sus filas.
 
 <Callout kind="alert">
   **Antes** del parche D, casi todas las tablas tenían `USING (true)` en SELECT. Un técnico podía leer expedientes ajenos, facturas y documentos via `supabase-client` desde devtools. Ahora las SELECT policies son por rol/ownership. Ver detalle en [Base de datos · RLS](/arquitectura/base-de-datos#rls-row-level-security).
@@ -130,7 +131,7 @@ Esto se replica en `onts`, `emu_rows`, `inventory`, `tecnicos_expediente`, `tecn
 
 <Callout kind="alert">
   Antes del commit `6436986`, un usuario podía cambiar su propio `rol` vía la action de update perfil. Ahora:
-  - El endpoint de **signup** ignora `rol` enviado por el cliente (se fuerza a `tecnico` como default).
-  - El **self-update** de `user_profiles` no permite cambiar `rol` (trigger BEFORE UPDATE lo aborta).
-  - Sólo admin cambia roles desde `/sistema`.
+  - El trigger `handle_new_user` (sobre `auth.users`) ignora `raw_user_meta_data.rol` y hardcodea `'tecnico'` como rol inicial.
+  - El **self-update** de `user_profiles` está cortado por una RLS policy `Users update own profile (no rol/tecnico_id)` con `WITH CHECK` que exige que `rol` y `tecnico_id` queden iguales a los actuales — un `update({rol:'admin'})` falla con `42501`.
+  - Sólo admin cambia roles vía RPC `cambiar_rol_usuario(p_user_id, p_rol, p_tecnico_id)` expuesta a través de la UI en `/sistema`.
 </Callout>

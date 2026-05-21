@@ -1,0 +1,313 @@
+---
+title: Día 0
+description: Cartilla de arranque end-to-end. Léelo ANTES de tocar código o de mostrarle la app a alguien de WCG.
+---
+
+## Para quién es esto
+
+<Columns cols={2}>
+  <Card title="Vos que recién entrás" icon="user-plus">
+    Sos nuevo en el proyecto y necesitás un mapa: qué hace la app, qué romper duele, dónde está cada cosa.
+  </Card>
+  <Card title="Vos que demostrás" icon="presentation">
+    Tenés que mostrarle WCG App a un nuevo usuario o a CARSO. Acá está el guion: el flujo end-to-end que cuenta la historia.
+  </Card>
+</Columns>
+
+<Callout kind="info" collapsed="false">
+  Este documento asume que ya leíste [Introducción](/introduction) y [Conceptos](/concepts). Si no, **detenete y leelos primero** — la mitad de las decisiones de la app no tienen sentido sin el glosario (R20, F200, EMU, SIATEL, CFDI, FTTH).
+</Callout>
+
+## Acceso (5 min)
+
+<Steps>
+  <Step title="Entrá al deploy" icon="globe" title-type="p">
+    **https://wcg-app-v2.vercel.app**
+
+    Login con la cuenta admin:
+    - Email: `admin@splanding.dev`
+    - Password: `wcg-admin-2026`
+  </Step>
+
+  <Step title="Verificá el rol" icon="shield" title-type="p">
+    En `/sistema` → Usuarios deberías ver al menos un usuario con rol `admin` (vos). Si ves más cuentas, son las semillas + cuentas creadas por signup.
+  </Step>
+
+  <Step title="Tour del sidebar" icon="navigation" title-type="p">
+    Hay **9 módulos** en orden de uso: Inicio, OS, ONT, Almacén, Remisiones, EMU, F200, Facturas, Reportes, Catálogos, Técnicos, Programa de obra, Sistema. El sidebar oculta lo que tu rol no ve (sólo vos como admin ves todo).
+  </Step>
+
+  <Step title="⌘K / Ctrl+K" icon="search" title-type="p">
+    El command palette está en cualquier pantalla. Buscá por folio, alfanumérico, teléfono o RFC.
+  </Step>
+</Steps>
+
+## El flujo que cuenta la historia (15 min)
+
+Este es el camino completo del dinero: **CARSO surte material → técnico instala → WCG factura → CARSO paga**. Si entendés esto, entendés la app.
+
+<Steps>
+  <Step title="1. CARSO envía remisión" icon="truck" title-type="p">
+    Ir a `/remisiones` → click **Registrar remisión**.
+
+    Llená:
+    - Almacén destino (ej. ALM-VC)
+    - Folio CARSO
+    - 1-3 partidas (SKU + cantidad)
+
+    Click **Guardar**. La remisión nace en estado **Recibida** y el stock entra al almacén destino *atómicamente* (la RPC `recibir_remision` lo hace en una sola transacción).
+  </Step>
+
+  <Step title="2. Confirmar la remisión" icon="check-circle" title-type="p">
+    Entrá al detalle → click **Confirmar y descargar a inventario**.
+
+    Estado pasa a **Confirmada** y `stock_cargado_at` se sella. La RPC `confirmar_remision` es idempotente: si ya fue cargada, no duplica stock — sólo avanza el estado.
+
+    Mirá `/almacen` ahora — esos SKUs deben tener más `disponible`.
+  </Step>
+
+  <Step title="3. Surtir kit semanal al técnico" icon="package" title-type="p">
+    `/almacen/surtir` → elegí técnico destino → armá el kit (SKU + cantidad).
+
+    Click **Surtir**. La RPC `surtir_a_tecnico`:
+    - Valida `disponible >= cantidad` en el almacén (bug 2 — sin esto el almacén iba a negativo)
+    - Decrementa origen
+    - Incrementa mochila técnico (vía upsert atómico)
+
+    Si pedís más de lo que hay, ves un error como *"Stock insuficiente: tenés 5 en ALM-VC, intentás surtir 50"*.
+  </Step>
+
+  <Step title="4. Verificá la mochila del técnico" icon="user" title-type="p">
+    `/tecnicos/<id>` → tab **Inventario actual**.
+
+    Deberías ver los SKUs que acabás de surtir. La tabla muestra `disponible`, valor MXN, último movimiento. Filas en **rojo** si `disponible < 0` (descuadre).
+  </Step>
+
+  <Step title="5. Capturar OS" icon="clipboard-list" title-type="p">
+    `/os/nueva` → 4 pasos:
+
+    0. Datos del servicio (tipo, altas, SIATEL, subtipo Telmex)
+    1. Cliente + domicilio
+    2. Asignación: técnico + alfanuméricos de las ONTs
+    3. Revisión
+
+    Click **Capturar OS**. La RPC `crear_os_atomica` hace folio + INSERT os + seed `os_materiales` con `cantidad_solicitada = ceil(factor × altas)` y `cantidad_consumida = NULL`. **No descuenta mochila aún.**
+  </Step>
+
+  <Step title="6. Mediciones R20 (opcional pero real)" icon="activity" title-type="p">
+    En el detalle de la OS → tab **Mediciones** → completá potencia óptica, distrito, terminal, alfanumérico de poste, upsell Infinitum.
+
+    Estos campos viven en columnas separadas de `os`. La doc del R20 PDF (`/api/os/[id]/r20`) los usa todos.
+  </Step>
+
+  <Step title="7. Liquidar OS" icon="check-square" title-type="p">
+    En el detalle → botón **Liquidar**. La RPC `liquidar_os_atomica`:
+    - Para cada partida con `cantidad_consumida = NULL`, asume `consumida = entregada`.
+    - Descuenta esa cantidad de la mochila del técnico (vía upsert atómico).
+    - Pasa la OS a estado **Liquidada**.
+
+    El toast te dice cuántas partidas se auto-completaron. Si te sobró material, registralo como devolución (`/almacen/devolucion`) — sin esto, la mochila queda con un descuadre falso.
+  </Step>
+
+  <Step title="8. Generar el F200" icon="download" title-type="p">
+    `/f200` → elegí periodo → preview muestra exactamente lo que se exportará → click **Exportar a Excel**.
+
+    Endpoint: `GET /api/f200?periodo=…&tecnico=…&tipo=…`. Devuelve un `.xlsx` real con `exceljs` formato Telmex v2.4 (11 columnas, header congelado, totales al pie).
+  </Step>
+
+  <Step title="9. CFDI + cobranza" icon="dollar-sign" title-type="p">
+    `/facturas` → entrá a una factura emitida → subí XML+PDF (`subirCFDIAction`). El parser `cfdi-parser.ts` extrae UUID, totales y los compara contra lo capturado.
+
+    Avanzá el estado: `Borrador → Emitida → Enviada al lote → ... → Pagada`. Cuando llegue a **Pagada** (completa, no parcial), el trigger `emu_avanzar_cobrado` automáticamente marca las filas EMU asociadas como `cobrado`.
+  </Step>
+</Steps>
+
+<Callout kind="info">
+  Eso es **el ciclo completo**. Todo lo demás (ONT lifecycle, EMU detallado, devoluciones, traspasos, expediente técnico) son ramas que se entienden mejor después de internalizar el flujo principal.
+</Callout>
+
+## Cosas que vas a romper (si no leés esto)
+
+<Steps>
+  <Step title="El técnico ve sólo lo suyo" icon="eye-off" title-type="p">
+    Si entrás con cuenta `tecnico`, no vas a ver OS/ONT/EMU de otros. **No es bug**, es la RLS post-D filtrando por `current_user_tecnico_id()`. Si querés ver todo, usá la cuenta admin.
+  </Step>
+
+  <Step title="Los movimientos de stock son irreversibles" icon="alert-triangle" title-type="p">
+    No hay "deshacer surtido". Si te equivocaste, la única forma de revertir es:
+    - **Sobró en mochila** → devolución (`/almacen/devolucion`)
+    - **Faltó en almacén** → nueva remisión o traspaso desde otro almacén
+    - **Capturaste mal una OS** → editás partidas con `agregarPartidaOSAction` o tocás DB directo (no recomendado)
+  </Step>
+
+  <Step title="Liquidar sin reportar consumo asume 'consumió todo'" icon="package-minus" title-type="p">
+    Si liquidás una OS sin que el técnico haya reportado consumo (lo más común — Bug 3 fix), el sistema asume `consumida = entregada` y descuenta la mochila por la cantidad entregada completa.
+
+    Si te sobró material, **registrá la devolución antes o después** o vas a acumular descuadre en la mochila del técnico.
+  </Step>
+
+  <Step title="Pagada parcial no marca EMU cobrado" icon="dollar-sign" title-type="p">
+    El trigger `emu_avanzar_cobrado` sólo dispara con estado `Pagada` completa, NO con `Pagada parcial` (Bug 6). Si CARSO te paga $5k de una factura de $10k, las EMUs siguen en `facturado` hasta que llegue el resto.
+  </Step>
+
+  <Step title="No promovás roles tocando DB directo" icon="shield" title-type="p">
+    Hay 3 capas que protegen el rol: signup hardcoded a `tecnico`, RLS WITH CHECK bloquea self-update, y la RPC `cambiar_rol_usuario` exige rol admin. Si querés un admin nuevo, hacelo desde `/sistema` (no toques `user_profiles` a mano — los triggers pueden cambiar y no querés que tu workaround quede como pasivo).
+  </Step>
+
+  <Step title="Los catálogos están abiertos a authenticated" icon="info" title-type="p">
+    Tablas como `skus`, `almacenes`, `tecnicos`, `copes`, `tipos_tarea` tienen `SELECT USING (true)`. Es **a propósito** — son data de referencia que toda la app necesita. No "fortifiqués" por tu cuenta o vas a romper queries.
+  </Step>
+</Steps>
+
+## Cómo debuggear
+
+<Steps>
+  <Step title="Error 42501 (RLS violation)" icon="lock" title-type="p">
+    El JWT del usuario no tiene policy para esa operación. Causas comunes:
+    - Estás llamando una mutación con rol incorrecto (ej. operaciones intentando subir CFDI).
+    - La tabla no tiene policy de INSERT/UPDATE para tu rol.
+    - El payload viola un `WITH CHECK` (típico: técnico intentando cambiar su `rol` en `user_profiles`).
+
+    Fix: revisá la matriz en [Roles y RLS](/arquitectura/roles-permisos), o consultá `pg_policies` directo en Supabase SQL editor.
+  </Step>
+
+  <Step title="Error 23505 (unique violation)" icon="copy" title-type="p">
+    Folio duplicado, alfanumérico repetido, item duplicado en `*_items`. Si pasa en remisión/traspaso/devolución/surtido, lo más probable es que el helper `dedupePorSku` haya quedado fuera de tu flujo o hayas mandado el array sin pasarlo por el action canónico.
+  </Step>
+
+  <Step title="Stock insuficiente" icon="package-x" title-type="p">
+    Mensaje del estilo *"Stock insuficiente para SKU X: tenés Y en ALM-VC, intentás surtir Z"*. Es el guard del Bug 2. No es un código de error PG — es un `raise exception` en la RPC. Sumá inventario (más remisiones, traspaso) o reducí lo que pedís.
+  </Step>
+
+  <Step title="Mochila negativa" icon="trending-down" title-type="p">
+    `disponible < 0` en `inventory` con `tecnico_id` no es bug — es descuadre **visible**. Indica que reportaste consumo de algo que el técnico nunca recibió. Concilia con una salida retroactiva (registrar surtido por la cantidad faltante).
+  </Step>
+
+  <Step title="Foto del técnico no aparece" icon="image" title-type="p">
+    Signed URLs expiran a los 10 min. Si la página estuvo abierta más tiempo y refrescás imágenes, podés ver el placeholder. Refrescá la página (server-side genera una URL nueva).
+  </Step>
+
+  <Step title="Logs de Postgres" icon="terminal" title-type="p">
+    En Supabase Dashboard → Logs → "Postgres logs". Las RPCs SECURITY DEFINER aparecen con sus `raise exception` legibles.
+  </Step>
+</Steps>
+
+## Cómo agregar una feature
+
+El patrón cuando necesitás mutar datos:
+
+<Steps>
+  <Step title="Modelar la migración (si aplica)" icon="database" title-type="p">
+    Si tu feature toca el schema, escribí una migration vía `mcp__supabase__apply_migration` o `supabase migration new <nombre>`. Convención: snake_case descriptivo, una migration por feature.
+  </Step>
+
+  <Step title="RPC SECURITY DEFINER si hay atomicidad" icon="zap" title-type="p">
+    Si tu feature mueve stock, toca múltiples tablas, o necesita una transacción → RPC en SQL. Patrón:
+
+    ```sql
+    create or replace function public.mi_action(p_x text)
+    returns ... language plpgsql security definer
+    set search_path = public as $$
+    declare v_role user_role;
+    begin
+      v_role := current_user_role();
+      if v_role not in ('admin', ...) then
+        raise exception 'Tu rol no puede X';
+      end if;
+      -- lógica atómica acá
+    end; $$;
+
+    grant execute on function public.mi_action(text) to authenticated;
+    ```
+  </Step>
+
+  <Step title="Server action TS wrapper" icon="code" title-type="p">
+    En `src/lib/actions/<modulo>.ts`. Patrón:
+
+    ```typescript
+    'use server';
+    export async function miAction(input): Promise<ActionResult<{...}>> {
+      const session = await fetchSessionUser();
+      if (!session) return { ok: false, error: 'No autenticado' };
+      if (!can.X(session.profile.rol)) return { ok: false, error: '...' };
+      const supabase = await getSupabaseServer();
+      const { data, error } = await supabase.rpc('mi_action', { p_x: input.x });
+      if (error) return { ok: false, error: error.message };
+      revalidatePath('/ruta/afectada');
+      return { ok: true, data };
+    }
+    ```
+  </Step>
+
+  <Step title="UI Client component" icon="layout" title-type="p">
+    Import el action en un Client component (`'use client'`), llamalo con `useTransition` para mostrar pending state, mostrá toast de error/éxito, `router.refresh()` para revalidar.
+  </Step>
+
+  <Step title="Actualizá el doc del módulo" icon="book" title-type="p">
+    Tu feature debe aparecer en el `.mdx` correspondiente en `docs/documentationai/modulos/<modulo>.mdx`. Sin doc, esto va a degenerar como degeneró antes del fix de doc sync (29 hallazgos en una sola auditoría).
+  </Step>
+</Steps>
+
+## Vocabulario rápido
+
+| Sigla | Qué es |
+|---|---|
+| **R20** | Formato físico que Telmex exige por OS instalada. PDF en `/api/os/[id]/r20`. |
+| **F200** | Reporte semanal de OS liquidadas que WCG sube al portal Telmex. `.xlsx` en `/api/f200`. |
+| **EMU** | Estimación Mensual de Unidades — cobranza semanal técnico × concepto. 4 hojas (A4/CO/FO/QI). |
+| **SIATEL** | Sistema interno de Telmex donde origina la OS. WCG no accede; sólo captura el folio como referencia. |
+| **CFDI** | Comprobante Fiscal Digital por Internet (factura electrónica MX). WCG emite a CARSO. |
+| **FTTH** | Fiber To The Home — la red de fibra que WCG instala. Factor 1.0 en `factor_alta_ftth`. |
+| **REPSE** | Registro de prestadores de servicios especializados. El expediente del técnico (RFC/CURP/IMSS/INE) lo cumple. |
+| **PEP** | Plan de Ejecución de Proyecto — código contable de CARSO. Aparece en remisión y programa de obra. |
+| **AXAPTA / SIATEL (SKU)** | Doble clave de material — AXAPTA es la PK en `skus`, `siatel` es la otra. |
+| **CARSO** | Cliente directo de WCG. Surte el material vía remisión, recibe CFDIs, paga. |
+| **Telmex** | Origen de la demanda. Manda OS por SIATEL, exige R20 + F200. |
+| **CSD** | Certificado de Sello Digital — credencial SAT para timbrar CFDIs. Vive en `empresa_config`. |
+
+## Cheatsheet de rutas
+
+```
+/                       # Inicio (dashboard)
+/os                     # Listado OS
+/os/nueva               # Wizard 4-step (admin/operaciones/tecnico)
+/os/[id]                # Detalle con 6 tabs
+/ont                    # Listado ONT
+/ont/lote               # Bulk receive
+/ont/[id]               # Detalle ONT con timeline
+/almacen                # Inventario denso (almacén + mochilas)
+/almacen/surtir         # Kit semanal técnico
+/almacen/traspaso       # Entre almacenes WCG
+/almacen/devolucion     # Técnico → almacén
+/remisiones             # CARSO → WCG (listado)
+/remisiones/nueva       # Registrar nueva
+/remisiones/[numero]    # Detalle + confirmar
+/emu                    # 4 hojas A4/CO/FO/QI + ciclo cobranza
+/f200                   # Generador semanal Telmex
+/facturas               # CFDIs emitidos
+/reportes               # Métricas operativas
+/catalogos              # Maestros (SKU, técnicos, almacenes, unidades, etc.)
+/tecnicos               # Listado
+/tecnicos/[id]          # Expediente + Inventario + Documentos + Herramienta + Vehículo
+/programa-obra          # Gantt CARSO (read-only)
+/sistema                # Usuarios + roles + empresa + documentos
+/sistema/empresa        # Datos fiscales WCG
+/sistema/documentos     # Repo central
+```
+
+## Siguiente
+
+<Columns cols={2}>
+  <Card title="Conceptos" href="/concepts" icon="layers">
+    Glosario completo del dominio.
+  </Card>
+  <Card title="Roles y RLS" href="/arquitectura/roles-permisos">
+    Matriz de permisos + cómo funciona el filtrado por rol.
+  </Card>
+  <Card title="Server Actions" href="/arquitectura/server-actions">
+    Inventario completo de actions con signaturas reales.
+  </Card>
+  <Card title="Base de datos" href="/arquitectura/base-de-datos">
+    Tablas, RPCs atómicas, único trigger SQL.
+  </Card>
+</Columns>

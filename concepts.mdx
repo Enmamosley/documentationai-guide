@@ -24,7 +24,7 @@ El código de WCG App está plagado de siglas (R20, F200, EMU, CFDI, SIATEL, FTT
     Clave AXAPTA del material que CARSO surte. Cada SKU tiene 3 factores Telmex (`alta_ftth`, `mig_ftth`, `mig_ftth_vieja`) que dicen cuántas piezas consume cada tipo de OS.
   </Card>
   <Card title="Remisión" icon="truck">
-    Documento con el que **CARSO envía material a WCG**. Estados: En tránsito → Recibida → Confirmada. Al confirmar, el stock entra al almacén destino.
+    Documento con el que **CARSO envía material a WCG**. Estados: Recibida → Confirmada (default `Recibida` al registrar). Al confirmar, el stock entra al almacén destino atómicamente.
   </Card>
   <Card title="Factura emitida (CFDI)" icon="file-text">
     Factura que **WCG emite a CARSO**. Va en lotes con CARSO y pasa por: Borrador → Emitida → En revisión → Aceptada → Por pagar → Pagada.

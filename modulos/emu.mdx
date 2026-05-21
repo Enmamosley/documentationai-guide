@@ -61,10 +61,22 @@ Pendiente → Asociado a factura → Cobrado
 
 ```
 src/lib/actions/emu.ts
-  asociarEMUFacturaAction(emuId, facturaId)
-  marcarRechazadaEMUAction(emuId, motivo)
-  # cobrar es automático via trigger when factura.estado → "Pagada"
+  marcarEMUFacturadoAction(emuIds: number[], facturaId)
+    // Bulk: asocia varias filas a una factura. La UI selecciona checkboxes
+    // y manda el array entero.
+
+  marcarEMURechazadoAction(emuId)
+    // Single. Marca la fila como rechazada por CARSO.
+    // ⚠️ La signatura actual NO acepta `motivo` — si se necesita, pendiente.
+
+  asignarEMUTecnicoAction(emuId, tecnicoId)
+    // Reasignar fila EMU a otro técnico (uso administrativo cuando el
+    // import histórico no logró parsear el técnico).
 ```
+
+<Callout kind="info">
+  El paso a `cobrado` es **automático vía trigger SQL** (`emu_avanzar_cobrado` AFTER UPDATE en `facturas_emitidas`) — pero sólo cuando la factura pasa a `Pagada` **completa**. Estado `Pagada parcial` deja las EMUs en `facturado` hasta el pago total (Bug 6).
+</Callout>
 
 ## Helpers
 

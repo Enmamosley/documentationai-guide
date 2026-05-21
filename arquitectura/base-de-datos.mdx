@@ -104,25 +104,31 @@ CREATE FUNCTION current_user_role() RETURNS user_role AS $$
 $$ LANGUAGE sql STABLE;
 ```
 
-## Triggers atómicos
+## Atomicidad — RPCs + 1 trigger
+
+WCG App usa **RPCs `SECURITY DEFINER` llamadas explícitamente** desde las server actions para los movimientos críticos. Sólo un caso es trigger automático.
 
 <Steps>
-  <Step title="liquidar_os → consume mochila" icon="package-minus" title-type="p">
-    Cuando `os.estado` pasa a `Liquidada`, un trigger BEFORE UPDATE descuenta de `inventory` (mochila del técnico) las cantidades de `os_partidas`. Si no hay stock, falla con `23514` y la mutación se aborta.
+  <Step title="RPC liquidar_os_atomica → consume mochila" icon="package-minus" title-type="p">
+    Cuando el técnico (o ops/admin) liquida la OS, `liquidarOSAction` llama esta RPC. Para cada partida con `cantidad_consumida IS NULL`, setea consumida=entregada y descuenta el delta de `inventory` (mochila técnico) vía upsert atómico `INSERT…ON CONFLICT DO UPDATE`. Si la mochila no alcanza, queda negativa (descuadre visible, no error — el técnico debe conciliar via devolución).
   </Step>
 
-  <Step title="confirmar_remision → incrementa almacén" icon="package-plus" title-type="p">
-    Al pasar `remisiones.estado` a `Confirmada`, las partidas suben el `disponible` del almacén destino. Atómico via row-level locking.
+  <Step title="RPC confirmar_remision → incrementa almacén" icon="package-plus" title-type="p">
+    Al confirmar una remisión, `confirmarRemisionAction` llama esta RPC. Lee `stock_cargado_at`: si es NULL, incrementa `disponible` del almacén destino (upsert atómico) y sella el flag; si ya estaba sellado, sólo avanza estado a `Confirmada` (idempotente).
   </Step>
 
-  <Step title="factura_pagada → EMU cobrado" icon="check-circle" title-type="p">
-    Cuando `facturas.estado` pasa a `Pagada`, todas las `emu_rows` con `factura_id = NEW.id` pasan a `Cobrado` y se sella `fecha_cobro`.
+  <Step title="TRIGGER emu_avanzar_cobrado → único trigger del sistema" icon="check-circle" title-type="p">
+    `AFTER UPDATE` en `facturas_emitidas`. Cuando `estado` pasa a `Pagada` **completa** (no 'Pagada parcial' — Bug 6), todas las `emu_rows.factura_emitida_id` asociadas pasan a `estado_cobro='cobrado'` y se sella `fecha_cobrado`.
   </Step>
 
-  <Step title="prevent_role_escalation" icon="shield" title-type="p">
-    Trigger en `user_profiles` BEFORE UPDATE: si `NEW.rol != OLD.rol` y `auth.uid() != admin`, se aborta. (Bug 4 cerrado en `6436986`.)
+  <Step title="Protección de escalation por RLS WITH CHECK" icon="shield" title-type="p">
+    No hay trigger `prevent_role_escalation`. La protección de Bug 4 vive en la RLS policy `Users update own profile (no rol/tecnico_id)` con `WITH CHECK` que exige `rol = (current rol del user) AND tecnico_id = (current tecnico_id)`. Si un técnico intenta `update({rol:'admin'})` se rechaza con `42501`. Sólo el admin puede cambiar roles vía RPC `cambiar_rol_usuario`.
   </Step>
 </Steps>
+
+<Callout kind="info">
+  Otros RPCs atómicos relevantes en stock: `recibir_remision`, `surtir_a_tecnico` (con guard de stock insuficiente), `ejecutar_traspaso` (idem), `devolver_al_almacen`, `reportar_consumo_atomico`, `agregar_partida_os`. Todos siguen el patrón `INSERT…ON CONFLICT DO UPDATE` sobre `inventory` para evitar las filas duplicadas que tenía la versión anterior (Bug 1).
+</Callout>
 
 ## Tres clientes Supabase
 

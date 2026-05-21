@@ -18,8 +18,12 @@ description: Gantt semanal CARSO · ruta /programa-obra
 
 | Acción | Roles |
 |---|---|
-| Ver | admin, **operaciones** |
-| Editar compromisos | admin, operaciones |
+| Ver listado | admin, **operaciones** |
+| Editar compromisos | — *pendiente* |
+
+<Callout kind="alert">
+  **Estado actual: read-only.** La UI muestra los programas existentes (con su PEP, supervisor, % avance, etc.) pero **no hay editor visual del Gantt**. El botón "Nuevo programa" fue removido (era cosmético). Si necesitás cargar un programa nuevo, hacelo manualmente en DB sobre `programas_obra` + `programa_dias`. El empty state lo indica explícitamente.
+</Callout>
 
 <Callout kind="info">
   Este módulo es de planeación. No genera OS automáticamente — sólo es el plan. Las OS reales se capturan desde `/os/nueva` cuando el técnico ya hizo el servicio.

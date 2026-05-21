@@ -5,6 +5,30 @@ description: Cambios relevantes de WCG App.
 
 ## Cambios recientes
 
+<Update label="2026-05-21" description="Sync de documentación con código + Día 0" tags={["docs"]}>
+## Documentación al día
+
+Auditoría doc-vs-código (29 hallazgos) cerrada en una sola pasada. Principales cambios:
+
+- **Recategorización del modelo de atomicidad**: 3 de los 4 supuestos "triggers SQL" eran en realidad RPCs llamadas explícitamente. El único trigger real es `emu_avanzar_cobrado`. Actualizado `arquitectura/base-de-datos.mdx`.
+- **Server actions reescritas**: nombres reales (`createOSAction`, `liquidarOSAction`, `agregarPartidaOSAction`, `crearSalidaTecnicoAction`, `recibirLoteONTAction`, `actualizarCobranzaAction`, `subirCFDIAction`, `cambiarRolUsuarioAction`, etc.) en `arquitectura/server-actions.mdx`. Quitadas las 6 actions inexistentes que la doc prometía (`cancelarOSAction`, `crearUsuarioAction`, `crearBorradorFacturaAction`, …) — marcadas como TODO en `notice.mdx`.
+- **OS captura corregida**: el paso 4 ya no dice "el material se descuenta de su mochila atómicamente al guardar" — eso pasa al liquidar (Bug 3). Documentado el tab "Mediciones" que el doc omitía.
+- **Conceptos sin contradicción**: `concepts.mdx` ya no dice "En tránsito → Recibida → Confirmada" — está alineado con `modulos/remisiones.mdx` (Bug 9).
+- **Ejemplo SQL roto arreglado**: `tecnicos.user_id` no existe; el helper real es `current_user_tecnico_id()`. Reemplazado en `arquitectura/roles-permisos.mdx`.
+- **Programa de obra honestidad**: ahora dice claro "Estado actual: read-only" — el botón "Nuevo programa" fue removido y no hay editor.
+
+## Día 0
+
+Nuevo doc `/dia-cero` — cartilla de arranque end-to-end para alguien que entra al proyecto (o que tiene que mostrarle la app a CARSO). Incluye:
+
+- Acceso + tour rápido (5 min)
+- Flujo completo *CARSO surte → técnico instala → WCG factura → CARSO paga* en 9 steps con click-by-click (15 min)
+- 6 *pitfalls* clásicos (técnico ve sólo lo suyo, movimientos irreversibles, Pagada parcial ≠ Cobrado, etc.)
+- Cómo debuggear errores PG comunes (`42501`, `23505`, stock insuficiente, mochila negativa)
+- Patrón estándar para agregar features (migration → RPC → server action → UI)
+- Cheatsheet de rutas + vocabulario rápido (R20/F200/EMU/SIATEL/CFDI/FTTH/REPSE/PEP/CSD)
+</Update>
+
 <Update label="2026-05-20 (noche)" description="Tecnico detail: foto + tabs Inventario/Documentos · Bugs 9/10/11/12/13 · Endurecimiento RLS" tags={["seguridad", "rls", "tecnicos", "cleanup"]}>
 ## /tecnicos/[id] enriquecido
 - `b1d7100` — Foto del técnico (storage `wcg-docs/tecnico-fotos/<id>.<ext>`, signed URL 10min) + tab **Documentos** scoped por técnico. Actions `subirFotoTecnicoAction` (admin · operaciones, ≤5 MB) y `eliminarFotoTecnicoAction` (admin).

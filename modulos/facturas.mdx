@@ -74,8 +74,22 @@ Borrador → Emitida → Enviada al lote → En revisión CARSO →
 
 ```
 src/lib/actions/facturas.ts
-  crearBorradorFacturaAction(data)
-  adjuntarCFDIAction(facturaId, xmlFile, pdfFile)
-  cambiarEstadoFacturaAction(facturaId, nuevoEstado, motivo?)
-  marcarPagadaAction(facturaId, fechaPago)    # ← dispara trigger EMU.Cobrado
+  actualizarCobranzaAction(facturaId, patch)
+    // Mueve la factura entre estados (Borrador → … → Pagada),
+    // setea fechas (envio_carso, aceptacion_carso, pago), lote_envio,
+    // retencion_isr/iva, notas_cobranza. Patch parcial.
+    // ⚠️ El trigger emu_avanzar_cobrado SÓLO dispara cuando estado pasa
+    // a 'Pagada' completa, no con 'Pagada parcial' (Bug 6).
+
+  subirCFDIAction(facturaId, formData)
+    // FormData con xml + opcional pdf. Sube a Storage privado
+    // cfdi-emitidos, parsea XML con fast-xml-parser (cfdi-parser.ts).
+    // Si el XML trae un UUID distinto, gana el XML (es el registro fiscal).
+
+  getCFDIDownloadUrlAction(facturaId, type: 'xml' | 'pdf')
+    // Signed URL (5 min) para descargar el adjunto.
 ```
+
+<Callout kind="info">
+  No existen actions `crearBorradorFacturaAction` ni `cambiarEstadoFacturaAction` separadas — toda la cobranza pasa por el patch parcial de `actualizarCobranzaAction`. La factura se crea desde el backend cuando se importan los lotes de CARSO; no hay UI de "nueva factura" todavía.
+</Callout>

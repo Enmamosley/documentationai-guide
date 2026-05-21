@@ -20,47 +20,86 @@ Toda mutación pasa por una Server Action (`'use server'`) en `src/lib/actions/`
 ### `actions/os.ts`
 
 ```typescript
-createOSAction(data: OSCreateInput): Promise<{ id, folio }>
-liquidarOSAction(osId: string): Promise<void>
-cancelarOSAction(osId: string, motivo: string): Promise<void>
-agregarPartidaAction(osId, sku, qty): Promise<void>
+createOSAction(input: CreateOSInput): Promise<ActionResult<{ id: string }>>
+  // Wrapper de la RPC crear_os_atomica: folio + INSERT os + seed
+  // os_materiales en una sola transacción (Bug 8).
+
+liquidarOSAction(osId): Promise<ActionResult<{ id, partidas_auto_completadas }>>
+  // Llama la RPC liquidar_os_atomica: para cada partida con
+  // cantidad_consumida=NULL, setea consumida=entregada y descuenta
+  // mochila técnico (Bug 3). Reporta el count para el toast.
+
+actualizarEntregadaAction(osId, sku, cantidadEntregada): Promise<ActionResult>
+  // Almacenista actualiza cantidad ENTREGADA por SKU.
+
+reportarConsumoAction(osId, sku, cantidadConsumida): Promise<ActionResult>
+  // Técnico reporta consumo real (delta vs previo → mochila).
+
+agregarPartidaOSAction(osId, sku, cantidadSolicitada): Promise<ActionResult>
+  // RPC agregar_partida_os: INSERT…ON CONFLICT DO UPDATE suma cantidad
+  // si la partida ya existe (Bug 5 — incluye gate de rol).
+
+editarMedicionesOSAction(osId, patch): Promise<ActionResult>
+  // Campos R20 (potencia óptica, distrito, terminal, upsell Infinitum,
+  // etc.). Patch parcial, sólo campos que cambiaron.
+
+editarNotasTecnicoAction(osId, notas): Promise<ActionResult>
+  // Notas libres del técnico (lo que antes iba por WhatsApp).
 ```
+
+<Callout kind="info">
+  `cancelarOSAction` no existe todavía. La tabla `os` soporta estado `Cancelada` pero la transición no está expuesta — pendiente como TODO.
+</Callout>
 
 ### `actions/onts.ts`
 
 ```typescript
-asignarONTAction(alfanumerico, tecnicoId): Promise<void>
-liquidarONTAction(alfanumerico, osId): Promise<void>
+recibirLoteONTAction(input: LoteONTInput): Promise<ActionResult<{ insertados, duplicados }>>
+  // Bulk receipt: upsert con onConflict='alfanumerico', ignoreDuplicates.
+  // Reporta cuántos se insertaron y la lista de los que ya existían.
+
+asignarONTAction(alfanumerico, tecnicoId): Promise<ActionResult>
+liquidarONTAction(alfanumerico, osId): Promise<ActionResult>
   // Bug 11: si rol=tecnico, valida que la OS objetivo le pertenezca
-  // antes de marcar la ONT como liquidada.
-marcarONTDanadaAction(alfanumerico, motivo): Promise<void>
-capturarLoteAction(rows: ONTLoteInput[]): Promise<{ insertadas, errores }>
+  // antes de marcar la ONT como Liquidada.
+marcarONTDanadaAction(alfanumerico): Promise<ActionResult>
 ```
 
 ### `actions/facturas.ts`
 
 ```typescript
-crearBorradorFacturaAction(data): Promise<{ id }>
-adjuntarCFDIAction(facturaId, xmlFile, pdfFile): Promise<void>
-cambiarEstadoFacturaAction(facturaId, nuevoEstado, motivo?): Promise<void>
-marcarPagadaAction(facturaId, fechaPago): Promise<void>
+actualizarCobranzaAction(facturaId, patch): Promise<ActionResult>
+  // Mueve la factura entre estados de cobranza + setea fechas
+  // (envio_carso, aceptacion_carso, pago) + lote_envio + retenciones.
+  // Cubre el ciclo Emitida → Pagada en un solo action con patch parcial.
+
+subirCFDIAction(facturaId, formData): Promise<ActionResult<{ id, uuid }>>
+  // FormData con campos `xml` (File) y opcional `pdf` (File). Sube ambos
+  // a Storage privado `cfdi-emitidos`, parsea el XML con fast-xml-parser
+  // (src/lib/cfdi-parser.ts), actualiza facturas_emitidas con URLs y
+  // xml_parsed JSONB. Si el UUID del XML difiere del capturado, gana el XML.
+
+getCFDIDownloadUrlAction(facturaId, type: 'xml' | 'pdf'): Promise<ActionResult<{ url }>>
+  // Signed URL (5 min) para descargar el adjunto.
 ```
 
 ### `actions/almacen-movs.ts`
 
 ```typescript
 // Remisiones (CARSO → WCG)
-crearRemisionAction(input): Promise<ActionResult>      // nace en "Recibida"
-confirmarRemisionAction(remisionId): Promise<ActionResult>   // ← incrementa stock
+crearRemisionAction(input): Promise<ActionResult<{ id }>>    // nace en "Recibida"
+confirmarRemisionAction(remisionId): Promise<ActionResult<{ id, movio_stock }>>
+  // Llama RPC confirmar_remision: idempotente — si stock_cargado_at ya
+  // está sellado no duplica, sólo avanza estado a "Confirmada".
 
 // Movimientos internos
-crearSalidaTecnicoAction(input)   // kit semanal (surtir)
-crearTraspasoAction(input)        // entre almacenes WCG
-crearDevolucionAction(input)      // técnico → almacén
+crearSalidaTecnicoAction(input)   // kit semanal (surtir a técnico)
+crearTraspasoAction(input)        // entre almacenes WCG (origen ≠ destino)
+crearDevolucionAction(input)      // técnico → almacén (admin/almacenista/tecnico)
 
-// Helper privado: dedupePorSku — si la UI manda dos veces el mismo SKU,
-// suma cantidades antes del INSERT (evita unique_violation por UNIQUE
-// (parent_id, sku) recién agregado en *_items, Bug 10).
+// Helper privado dedupePorSku: si la UI manda dos veces el mismo SKU,
+// suma cantidades antes del INSERT — evita unique_violation por UNIQUE
+// (parent_id, sku) en *_items (Bug 10).
 ```
 
 <Callout kind="info">
@@ -70,17 +109,30 @@ crearDevolucionAction(input)      // técnico → almacén
 ### `actions/emu.ts`
 
 ```typescript
-asociarEMUFacturaAction(emuId, facturaId): Promise<void>
-marcarRechazadaEMUAction(emuId, motivo): Promise<void>
-// Cobrado es automático via trigger SQL cuando factura.estado → "Pagada"
+marcarEMUFacturadoAction(emuIds: number[], facturaId): Promise<ActionResult<{ count }>>
+  // Bulk: asocia varias filas EMU a una factura emitida. Bajo el trigger
+  // emu_avanzar_cobrado, cuando esa factura pase a Pagada, las filas
+  // avanzan a 'cobrado' automáticamente (sólo Pagada completa — Bug 6).
+
+marcarEMURechazadoAction(emuId): Promise<ActionResult>
+  // Marca una fila como rechazada por CARSO. No acepta motivo en la
+  // signatura actual.
+
+asignarEMUTecnicoAction(emuId, tecnicoId): Promise<ActionResult>
+  // Reasignar fila EMU a otro técnico (uso administrativo).
 ```
 
 ### `actions/tecnicos.ts`
 
 ```typescript
-actualizarExpedienteAction(tecnicoId, data): Promise<void>   // admin-only
-asignarHerramientaAction(tecnicoId, items[]): Promise<void>
-asignarVehiculoAction(tecnicoId, placa, marca, modelo): Promise<void>
+editarExpedienteAction(tecnicoId, patch: ExpedientePatch): Promise<ActionResult>
+  // Admin-only. Upsert sobre tecnicos_expediente (crea fila si no existe).
+
+agregarHerramientaAction(tecnicoId, input): Promise<ActionResult<{ id }>>
+retirarHerramientaAction(herramientaId, tecnicoId): Promise<ActionResult>
+agregarVehiculoAction(tecnicoId, input): Promise<ActionResult<{ id }>>
+retirarVehiculoAction(vehiculoId, tecnicoId): Promise<ActionResult>
+  // No es bulk — cada item se agrega/retira individualmente.
 
 // Foto del técnico (storage privado wcg-docs/tecnico-fotos/<id>.<ext>)
 subirFotoTecnicoAction(tecnicoId, formData): Promise<ActionResult>
@@ -92,17 +144,36 @@ eliminarFotoTecnicoAction(tecnicoId): Promise<ActionResult>
 ### `actions/users.ts`
 
 ```typescript
-crearUsuarioAction(email, password, rol): Promise<void>
-actualizarRolAction(userId, nuevoRol): Promise<void>          // admin-only
-desactivarUsuarioAction(userId): Promise<void>
+cambiarRolUsuarioAction(userId, rol, tecnicoId): Promise<ActionResult>
+  // Admin-only. Llama RPC cambiar_rol_usuario que valida en SQL:
+  // si rol='tecnico', exige tecnico_id existente en el catálogo.
+  // Bloquea auto-degradación si sos el último admin.
+
+listUsersForAdminAction(): Promise<ActionResult<UserListRow[]>>
+  // Admin-only. Llama RPC list_users_for_admin (SECURITY DEFINER) que
+  // hace JOIN user_profiles × auth.users para mostrar email.
 ```
+
+<Callout kind="info">
+  No existen actions `crearUsuarioAction` ni `desactivarUsuarioAction`. La alta de usuarios pasa por el signup de Supabase Auth (que arranca con rol `tecnico`); el admin después usa `cambiarRolUsuarioAction` para asignar el rol final.
+</Callout>
 
 ### `actions/empresa.ts` · `actions/documentos.ts`
 
 ```typescript
-actualizarEmpresaAction(data): Promise<void>
-subirDocumentoAction(file, categoria): Promise<{ id, url }>
-eliminarDocumentoAction(documentoId): Promise<void>
+actualizarEmpresaAction(patch): Promise<ActionResult>
+  // Admin-only. Patch parcial de empresa_config (RFC, REPSE, AR, CSD…).
+
+subirDocumentoAction(formData): Promise<ActionResult<{ id, storage_path }>>
+  // FormData con `file` + nombre + categoria + os_id?/tecnico_id?/notas?
+  // Bucket privado wcg-docs. Storage path:
+  // <categoria>/<year>/<timestamp>-<filename-sanitizado>
+
+getDocumentoDownloadUrlAction(documentoId): Promise<ActionResult<{ url }>>
+  // Signed URL 5 min.
+
+eliminarDocumentoAction(documentoId): Promise<ActionResult>
+  // Admin-only. Borra el blob primero (huérfanos no leakean: bucket privado).
 ```
 
 ## Patrón estándar

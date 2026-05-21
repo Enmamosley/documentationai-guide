@@ -71,8 +71,15 @@ El modelo afecta el catálogo de equipo asociado, **no** el factor de material d
 
 ```
 src/lib/actions/onts.ts
+  recibirLoteONTAction(input: LoteONTInput)
+    // Bulk: upsert con onConflict='alfanumerico', ignoreDuplicates=true.
+    // Devuelve { insertados, duplicados[] } para reportar al usuario.
   asignarONTAction(alfanumerico, tecnicoId)
+    // Sólo si la ONT está en estado "En almacén" → pasa a "Con técnico".
   liquidarONTAction(alfanumerico, osId)
-  marcarONTDanadaAction(alfanumerico, motivo)
-  capturarLoteAction(rows: ONTLoteInput[])     # lote masivo
+    // Bug 11: si rol=tecnico, valida ownership de la OS objetivo antes
+    // de marcar la ONT como Liquidada. Sin esto un técnico podía cruzar
+    // su ONT contra el folio de otro técnico.
+  marcarONTDanadaAction(alfanumerico)
+    // Sin parámetro de motivo en la signatura actual.
 ```

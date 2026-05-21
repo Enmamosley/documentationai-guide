@@ -29,6 +29,11 @@
                 "icon": "zap"
               },
               {
+                "title": "Día 0",
+                "path": "dia-cero",
+                "icon": "sun"
+              },
+              {
                 "title": "Conceptos",
                 "path": "concepts",
                 "icon": "layers"

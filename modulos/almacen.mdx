@@ -40,7 +40,7 @@ Cada fila es un par `(sku, ubicación)`. La tabla es densa: SKU, descripción, U
     Línea por SKU con cantidad. El stock disponible se valida en vivo contra el almacén origen.
   </Step>
   <Step title="Confirmar" icon="check" title-type="p">
-    `surtirAction` mueve stock de forma atómica (decrementa almacén, incrementa mochila). Si falla por concurrencia, retorna error 23514 y se reintenta.
+    `crearSalidaTecnicoAction` llama a la RPC `surtir_a_tecnico`: valida `disponible >= cantidad` (Bug 2 — sin esto el almacén iba negativo), decrementa origen via UPDATE y aumenta mochila via `INSERT…ON CONFLICT DO UPDATE`. Si el SKU no existe o no alcanza, lanza error específico (no es código `23514` — es un raise exception). No hay retry automático: el error sube al usuario.
   </Step>
 </Steps>
 
@@ -62,9 +62,12 @@ Cada fila es un par `(sku, ubicación)`. La tabla es densa: SKU, descripción, U
 
 ```
 src/lib/actions/almacen-movs.ts
-  surtirAction(tecnicoId, items[])
-  traspasoAction(srcAlmacen, dstAlmacen, items[])
-  devolucionAction(tecnicoId, items[])
+  crearSalidaTecnicoAction(input)   // → RPC surtir_a_tecnico
+  crearTraspasoAction(input)        // → RPC ejecutar_traspaso (origen ≠ destino)
+  crearDevolucionAction(input)      // → RPC devolver_al_almacen (admin/almacenista/tecnico)
+                                    // Todos via INSERT…ON CONFLICT DO UPDATE en inventory.
+                                    // Helper privado `dedupePorSku` evita unique_violation
+                                    // si la UI repite SKU (Bug 10).
 ```
 
 ## Tabla `inventory`

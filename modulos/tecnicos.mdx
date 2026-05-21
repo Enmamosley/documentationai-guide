@@ -98,9 +98,16 @@ RLS: el propio técnico ve sólo los suyos; admin/operaciones/contable ven todos
 
 ```
 src/lib/actions/tecnicos.ts
-  actualizarExpedienteAction(tecnicoId, data)
-  asignarHerramientaAction(tecnicoId, items[])
-  asignarVehiculoAction(tecnicoId, placa, marca, modelo)
-  subirFotoTecnicoAction(tecnicoId, formData)        # admin · operaciones
-  eliminarFotoTecnicoAction(tecnicoId)               # admin
+  editarExpedienteAction(tecnicoId, patch)
+    // Admin-only. Upsert sobre tecnicos_expediente (crea fila si no existe).
+
+  agregarHerramientaAction(tecnicoId, input)
+  retirarHerramientaAction(herramientaId, tecnicoId)
+  agregarVehiculoAction(tecnicoId, input)
+  retirarVehiculoAction(vehiculoId, tecnicoId)
+    // No es bulk — cada item se agrega/retira individualmente. La fila
+    // queda marcada con `vigente=false` al retirar (historial preservado).
+
+  subirFotoTecnicoAction(tecnicoId, formData)       // admin · operaciones
+  eliminarFotoTecnicoAction(tecnicoId)              // admin
 ```
