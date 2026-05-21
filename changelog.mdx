@@ -103,6 +103,26 @@ para Tabasco.
   por otros canales: import, WhatsApp Fase 2, edición posterior).
 </Update>
 
+<Update label="2026-05-22 (noche)" description="Calendario de OS: vista mensual + heatmap técnico × día" tags={["ui", "ops"]}>
+## `/os/calendario` (`de892f3`)
+
+Pantalla nueva con dos modos visuales para planificación operativa, sin
+requerir ningún cambio de schema (lee de `os` existente).
+
+- **Vista Calendario** — grilla 6×7 estándar (lunes a domingo), cada
+  celda lista las OS del día con chip de color por estado. Click → detalle.
+- **Vista Heatmap** — matriz técnicos × días del mes con intensidad por
+  cantidad de OS. Identifica saturación o subasignación de la semana de
+  un vistazo.
+- **Controles compartidos**: switch fecha (`fecha` captura vs `fechaCierre`
+  liquidación), filtros por estado/técnico/tipo, navegación de meses,
+  botón "Hoy", export CSV del periodo visible.
+- RLS sin cambios: técnico ve sólo sus OS → su calendario es su agenda
+  personal.
+- Sin paginación porque las OS al año son cientos (no miles).
+- Acceso desde toolbar de `/os` con botón "Calendario".
+</Update>
+
 <Update label="2026-05-22 (tarde)" description="Backlog cerrado: motivo EMU rechazo, cancelar OS, nueva factura, editor programa de obra" tags={["backlog", "ui", "ops"]}>
 ## Cierre del backlog post-Día 0
 

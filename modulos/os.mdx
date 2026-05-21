@@ -1,6 +1,6 @@
 ---
 title: Órdenes de Servicio (OS)
-description: Captura R20, listado, detalle y liquidación · rutas /os, /os/nueva, /os/[id]
+description: Captura R20, listado, calendario, detalle y liquidación · rutas /os, /os/nueva, /os/calendario, /os/[id]
 ---
 
 ## Qué es una OS
@@ -13,12 +13,15 @@ La **Orden de Servicio** es la unidad de trabajo. Cada OS representa un servicio
 
 ## Pantallas
 
-<Columns cols={3}>
+<Columns cols={2}>
   <Card title="/os" icon="list">
-    Listado con tabs por estado (Capturada · Liquidada · Facturada · Pagada · Cancelada) y filtros por técnico, fecha y tipo.
+    Listado con tabs por estado (Capturada · Liquidada · Facturada · Pagada · Cancelada) y filtros por técnico, fecha y tipo. Toolbar con botón "Calendario" para saltar a la vista mensual.
   </Card>
   <Card title="/os/nueva" icon="plus">
     Captura R20 en 4 pasos. Sugiere material según el factor Telmex del tipo de servicio.
+  </Card>
+  <Card title="/os/calendario" icon="calendar">
+    Vista mensual + **heatmap técnico × día** (commit `de892f3`). Toggle entre dos vistas, navegación de meses sin re-fetch, filtros por estado/técnico/tipo, switch entre fecha de captura y fecha de cierre. Export CSV del periodo visible.
   </Card>
   <Card title="/os/[id]" icon="file-text">
     Detalle con 6 tabs: General · Material · **Mediciones** · ONTs ·
@@ -27,6 +30,28 @@ La **Orden de Servicio** es la unidad de trabajo. Cada OS representa un servicio
     mockdata con nombres ficticios, removido en commit `006de4e`.
   </Card>
 </Columns>
+
+## Calendario (`/os/calendario`)
+
+Pantalla nueva con dos modos de visualización, útil para que el supervisor planifique carga semanal y detecte huecos/sobreasignación.
+
+<Steps>
+  <Step title="Vista Calendario" icon="calendar" title-type="p">
+    Grilla 6×7 estándar (lunes a domingo). Cada celda lista las OS del día con chip de color por estado (Capturada / Liquidada / Facturada / Pagada / Cancelada). Click en una OS lleva al detalle.
+  </Step>
+  <Step title="Vista Heatmap" icon="grid" title-type="p">
+    Matriz técnicos × días del mes con intensidad por cantidad de OS. Identifica de un vistazo qué técnico está saturado o sub-asignado en una semana específica.
+  </Step>
+</Steps>
+
+Controles compartidos:
+
+- **Switch fecha**: `fecha` (captura) o `fechaCierre` (liquidación). Útil para ver "qué se planificó" vs "qué se cerró" en el mes.
+- **Filtros**: estado, técnico, tipo de servicio. Aplican en cliente sin re-fetch (la cantidad de OS al año es chica — cientos — no vale paginar).
+- **Navegación**: ‹ Mes anterior · Mes siguiente › · botón "Hoy". Sin recargar el server.
+- **Export CSV** del periodo visible con los filtros aplicados.
+
+RLS aplica igual: técnico ve sólo sus OS, así que su calendario es su agenda personal.
 
 ## Captura en `/os/nueva` (4 steps)
 
