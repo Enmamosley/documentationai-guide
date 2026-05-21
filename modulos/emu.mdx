@@ -65,9 +65,10 @@ src/lib/actions/emu.ts
     // Bulk: asocia varias filas a una factura. La UI selecciona checkboxes
     // y manda el array entero.
 
-  marcarEMURechazadoAction(emuId)
-    // Single. Marca la fila como rechazada por CARSO.
-    // ⚠️ La signatura actual NO acepta `motivo` — si se necesita, pendiente.
+  marcarEMURechazadoAction(emuId, motivo)
+    // Single. Marca la fila como rechazada por CARSO + persiste el motivo
+    // (mín 3 chars, validado server-side). El motivo se ve en el detalle
+    // expandible de la fila. UI llama window.prompt con guía típica.
 
   asignarEMUTecnicoAction(emuId, tecnicoId)
     // Reasignar fila EMU a otro técnico (uso administrativo cuando el

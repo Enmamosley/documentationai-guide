@@ -5,7 +5,236 @@ description: Cambios relevantes de WCG App.
 
 ## Cambios recientes
 
-<Update label="2026-05-21" description="Sync de documentación con código + Día 0" tags={["docs"]}>
+<Update label="2026-05-23 (tarde)" description="Hardcodes críticos a configurables: PDFs leen empresa_config, IVA editable, defaults multi-región, timeline real" tags={["config", "multi-region", "mvp"]}>
+## Auditoría de hardcodes → configurables (H1–H4)
+
+Auditoría disparada por el hallazgo COPEs/Tabasco. Encontramos 5 hardcodes
+"de dominio" más en código que deberían vivir en DB. Cerramos 4 (H1–H4);
+H5 (DEMO_CREDENTIALS de /login) lo dejamos pendiente para "antes de prod".
+
+### H1 — PDFs leen empresa_config (`76152e6`)
+4 route handlers tenían `WCG SERVICIOS` + `WSC220113BQ3` + dirección
+hardcoded en HTML:
+- `/api/os/[id]/r20`
+- `/api/remisiones/[numero]/vale`
+- `/api/tecnicos/[id]/ficha`
+- `/api/tecnicos/[id]/credencial` (frente + reverso "Si encuentra esta…")
+
+Si admin editaba `/sistema/empresa`, los PDFs seguían con valores viejos.
+Ahora hacen `fetchEmpresaConfig()` server-side y renderean dinámico.
+
+Schema: `empresa_config.nombre_comercial TEXT` (marca corta para headers).
+Si está null, helper `empresaBrand(cfg)` deriva de la razón social.
+
+### H2 — IVA configurable (`<este commit>`)
+`FacturaNuevaClient` tenía `IVA_RATE = 0.16` hardcoded. Migration:
+`empresa_config.tasa_iva NUMERIC(5,4) NOT NULL DEFAULT 0.16
+CHECK (0 ≤ x ≤ 1)`. UI en `/sistema/empresa` con campo "Tasa IVA %"
+(0–100, edita en porcentaje, guarda como fracción). Label en
+FacturaNuevaClient se actualiza dinámico ("IVA (16%)" → "IVA (8%)" para
+frontera norte, etc.). Además se eliminó el `contratista = "WCG Servicios"`
+hardcoded en favor de `cfg.razon_social`.
+
+### H3 — Timeline real en OSDetail (`006de4e`)
+Antes: mockdata con nombres ficticios (`"Mauricio Treviño"`, `"Esther Galindo"`)
++ evento fake "Sincronizó con SIATEL +4h". Confundía al usuario real.
+Ahora: 2 eventos derivados de timestamps reales (captura + cierre/cancelación).
+Para timeline completa de auditoría se necesitaría tabla `os_eventos` y trigger
+— pendiente para Fase 2 si Operaciones lo pide.
+
+### H4 — Defaults multi-región en OSCapture (`006de4e`)
+- `initialTecnicoId: "T-014"` → `tecnicos[0]?.id ?? ""` (primer activo del
+  catálogo). El default viejo asumía técnico de seed CDMX.
+- `estado: "CDMX"` default → `""` (force select).
+- Dropdown estados: 4 (CDMX/Edomex/Morelos/Hidalgo) → `ESTADOS_MEXICO`
+  con los 32, nuevo export en `lib/catalogs.ts`.
+
+Bonus: propagado `motivoCancelacion` al type OS (B2 lo dejó pendiente).
+
+### Lo que queda como follow-up
+- **H5 — DEMO_CREDENTIALS** en `/login/actions.ts`: 5 cuentas email/password
+  hardcoded. Funcional para desarrollo, peligroso en producción.
+  Decisión: gate por `NODE_ENV !== 'production'` o eliminar antes de
+  deploy a cliente real.
+- **URL de verificación** en credencial: `wcg-app-v2.vercel.app` sigue
+  hardcoded. Debería venir de `NEXT_PUBLIC_APP_URL` o del host del request.
+- **MAX_SIZE inconsistente** (25/5/10 MB en documentos/tecnicos/facturas) —
+  consolidar en `empresa_config.max_upload_mb` cuando moleste.
+- **CATEGORIAS_VALIDAS de documentos** — migrar a tabla cuando WCG necesite
+  agregar categorías nuevas.
+- **Umbrales potencia óptica** ("Verde > -25 · ámbar -25 a -28 · rojo <-28")
+  — hardcoded en hint. Moverlo a constante con cita de norma Telmex cuando
+  cambie.
+</Update>
+
+<Update label="2026-05-23" description="Multi-región: COPEs de Tabasco sembradas + catálogo aclarado para soportar áreas fuera de CDMX" tags={["catalogo", "seed", "mvp"]}>
+## Multi-región (Tabasco)
+
+Hallazgo durante el descubrimiento del bot WhatsApp (Fase 2): WCG opera
+**fuera de CDMX**. Un técnico real reportó OS en `COPE: COMALCALCO`,
+`ÁREA: VILLAHERMOSA`. El catálogo de COPEs hasta hoy sólo tenía CDMX
+(`CTMAC`, `CTCMO`) + un Villahermosa (`CTVLL`) — bloqueo silencioso
+para Tabasco.
+
+### Cambios
+- **Seed**: 2 COPEs nuevas en `copes` con `area = 'Villahermosa, Tabasco'`:
+  - `CTCOM` — CT Comalcalco (sale en WhatsApp de captura real)
+  - `CTNAC` — CT Nacajuca
+- **UI `/catalogos/copes`**:
+  - Placeholders actualizados (`CTCOM` / `CT Comalcalco` / `Villahermosa, Tabasco`).
+  - Label cambia de "Área" a "Área / región" con hint "Región operativa Telmex".
+  - Descripción del catálogo aclara que el campo agrupa COPEs por región y se usa también en captura de OS.
+- **Sin migración** — la columna `copes.area` ya existía (commit Fase 4).
+  El esquema soportaba multi-región desde el principio; sólo faltaba data y la UI dejaba ambiguo qué poner.
+
+### Verificación
+- Admin agrega COPEs adicionales de cualquier área via `/catalogos/copes` →
+  Nuevo COPE.
+- `D22LPBN` ya estaba sembrado en `tipos_tarea` con `tecnologia = 'fibra'`.
+  Nota: el campo `tipos_tarea.tecnologia` es la tecnología típica; el OS
+  reporta la actual en `os.tecnologia` (fibra/cobre/híbrido) — pueden no
+  coincidir (D22LPBN puede ejecutarse sobre línea de cobre legacy).
+
+### Lo que NO se cambió y no hace falta
+- No se agregó columna `os.area` — derivable de `os.cope` ↔ `copes.area`
+  vía JOIN cuando se necesite. Evitamos denormalización.
+- No se cambió ningún flujo de captura de OS — la columna `os.cope` ya
+  existía pero el wizard `/os/nueva` no la pide (es campo R20 que llega
+  por otros canales: import, WhatsApp Fase 2, edición posterior).
+</Update>
+
+<Update label="2026-05-22 (tarde)" description="Backlog cerrado: motivo EMU rechazo, cancelar OS, nueva factura, editor programa de obra" tags={["backlog", "ui", "ops"]}>
+## Cierre del backlog post-Día 0
+
+4 items que la doc mencionaba como pendientes ahora están implementados.
+Plan completo en `docs/plan-backlog-2026-05-22.md`.
+
+### B1 — Motivo en `marcarEMURechazadoAction` (`7bfe4a8`)
+- Column `motivo_rechazo TEXT` agregada a `emu_rows`.
+- Action ahora requiere `motivo` (mín 3 chars, validado server-side).
+- En `EMUClient` el handler "Rechazar" abre `window.prompt` con guía
+  ("concepto mal, técnico ajeno, factura ya cobrada en otro lote…").
+  Cancelar = no-op; muy corto = toast de error.
+- DetailItem "Motivo rechazo CARSO" en el detalle expandible para filas
+  rechazadas.
+
+### B2 — `cancelarOSAction` + UI (`bb19724`)
+- Column `motivo_cancelacion TEXT` en `os`.
+- RPC `cancelar_os_atomica(p_os_id, p_motivo)`:
+  · Sólo Capturada o Liquidada. Facturada/Pagada da error específico
+    ("cancelá primero el CFDI asociado").
+  · Si Liquidada: revierte el consumo de cada partida con `cantidad_consumida > 0` devolviendo el material a la mochila del técnico vía `INSERT…ON CONFLICT DO UPDATE`. Limpia `cantidad_consumida = 0` para que la OS cancelada no cuente.
+  · UPDATE `os` con motivo + fecha_cierre + estado='Cancelada'.
+  · Devuelve `{ id, estado_anterior, partidas_revertidas }`.
+- Nuevo `can.cancelarOS = admin/operaciones` (técnico NO — requiere
+  supervisión).
+- Botón "Cancelar OS" en `OSDetailClient` con color danger, visible
+  según estado. Confirma reversa si era Liquidada.
+
+### B3 — UI "Nueva factura emitida" (`3bd7c67`)
+- `/facturas/nueva` con form completo + tabla de EMUs pendientes con
+  checkboxes. 4 stat cards en vivo: EMUs seleccionadas, subtotal, IVA
+  (16%), total.
+- Server action `crearFacturaEmitidaAction(input)`: admin/contable ·
+  INSERT factura en estado 'Borrador' con `uuid` placeholder + UPDATE
+  bulk en `emu_rows` (factura_emitida_id + estado_cobro='facturado').
+- Rollback automático: si la asociación de EMUs falla, DELETE la factura
+  recién creada.
+- Click en cualquier parte de la fila la toggle. Botón "Seleccionar
+  todas".
+- Botón "Nueva factura" en `/facturas` header (admin/contable).
+
+### B4 — Editor de programa de obra (`bcfe442`)
+- `/programa-obra/nuevo`: form en 3 secciones (identidad, periodo +
+  responsables, códigos contables CARSO opcionales).
+- `/programa-obra/[id]`: editor por filas día × técnico:
+  · Stat cards con días registrados, total programado, total real,
+    % avance (color-coded).
+  · Inline edit de `cantidad_real` (lo que el supervisor llena al cerrar
+    el día).
+  · Form "Agregar día" con técnico + fecha (clamp al periodo del
+    programa) + cantidad_programada.
+  · Delete por fila.
+  · % día con colors verde/warn/danger.
+- 4 server actions en `lib/actions/programa-obra.ts`: crear, editar,
+  setDia (upsert via UNIQUE constraint que ya existía), eliminarDia.
+- Botón "Nuevo programa" reactivado (era cosmético desde Tier B
+  cleanup) + CTA en empty state.
+</Update>
+
+<Update label="2026-05-22" description="Día 0 funcional: catálogos editables, setup wizard, empty states, crear usuarios" tags={["dia-0", "catalogos", "ux"]}>
+## El sistema arranca from-scratch
+
+Cliente nuevo recibe la app sin datos y queda operativo en ~15 min sin
+tocar dashboard de Supabase ni código. **5 fases:**
+
+### F1 — Catálogos técnicos/almacenes desde la UI (`96ccae4` + `78fb761`)
+- Migration: columna `activo` (bool) en `tecnicos` y `almacenes` con índice parcial.
+- Policies "Admin mutates" en ambas tablas (INSERT/UPDATE/DELETE).
+- Server actions: `crearTecnicoAction` / `editarTecnicoAction` /
+  `desactivarTecnicoAction` / `reactivarTecnicoAction` + análogos almacenes.
+- `desactivarAlmacenAction` valida que no haya stock con disponible > 0
+  antes de aceptar.
+- UI: `CatalogoTecnicosClient` y `CatalogoAlmacenesClient` con inline edit
+  + form expandible.
+- **TECNICOS y ALMACENES hardcoded en TS eliminados.** Source of truth =
+  DB. `CatalogosBaseProvider` (Context) fetcha una vez en el layout `(app)`
+  y expone a 13 client components vía `useCatalogosBase()`.
+- 75 referencias a `TECNICOS`/`ALMACENES` migradas a hook.
+- **Setup wizard en `/sistema`**: checklist con 5 ítems (empresa fiscal,
+  almacenes, técnicos, SKUs, usuarios operativos) con estado en vivo y
+  CTAs al paso pendiente.
+
+### F2 — CRUD para los catálogos restantes (`a058605`)
+- Migration: `activo` en SKUs + 6 policies de mutación admin-only en
+  skus/copes/empresas_empleadoras/tipos_tarea/unidades_medida/clientes.
+- Server actions: `crearSKUAction` / `editarSKUAction` / `toggleActivoSKUAction`
+  + 3 actions genéricas (`crearSimpleAction` / `editarSimpleAction` /
+  `toggleActivoSimpleAction`) parameterizadas por tabla.
+- UI nueva: `CatalogoSKUsClient` (con factores Telmex × 3) y
+  `CatalogoSimpleClient<T>` (genérico para los 5 simples).
+- `/catalogos/[slug]` rendea el client apropiado según slug. 4 slugs
+  nuevos: copes, empresas-empleadoras, tipos-tarea, clientes.
+- `/catalogos` hub muestra los 11 catálogos (8 editables + 3 enums
+  hardcoded por contrato Telmex).
+
+### F3 — Empty states en pantallas principales (`e702455`)
+- Nuevo componente `EmptyState` reutilizable (icon, título, desc, CTA
+  primario + secundario, hint).
+- Aplicado en: `/`, `/os`, `/ont`, `/almacen`, `/remisiones`.
+- Cada empty state guía al siguiente paso lógico según rol y estado del
+  sistema (ej: técnico ve "Capturar OS", admin ve "Setup del sistema").
+
+### F4 — Crear/desactivar usuarios desde admin UI (`3b4ceb4`)
+- Nuevo cliente `src/lib/supabase-admin.ts` con SERVICE_ROLE_KEY
+  (server-only, jamás expuesto al cliente).
+- Server actions:
+  - `crearUsuarioAction(email, password, nombre, alias, rol, tecnicoId)`:
+    auth.admin.createUser + rollback automático si falla la asignación
+    de rol. Email auto-confirm (sin SMTP).
+  - `desactivarUsuarioAction(userId)`: `ban_duration: "876000h"`.
+  - `reactivarUsuarioAction(userId)`: `ban_duration: "none"`.
+  - Self-protection: no podés desactivarte a vos mismo.
+- UI: form expandible "Crear usuario" con email + password (generator
+  random 12 chars sin O/0/l/1 + toggle show/hide + regenerar) + rol +
+  tecnico_id condicional. Toast incluye la password para que el admin
+  la copie y comparta por canal seguro.
+- Banner amarillo cuando `SUPABASE_SERVICE_ROLE_KEY` no está configurado.
+- RPC `list_users_for_admin` ampliada con `banned_until` para mostrar
+  badge Activo/Desactivado.
+
+### F5 — Empty states en pantallas secundarias (`1a3405e`)
+- Aplicado en: `/emu`, `/facturas`, `/reportes`, `/f200`, `/tecnicos`.
+- `/f200` detecta dos casos: hay OS pero ninguna liquidable vs. sin OS.
+
+## Estado del Día 0
+
+10 pantallas tienen empty states guiados. 9 catálogos son editables (2
+quedan como enums hardcoded del contrato Telmex). El admin puede
+configurar TODO sin acceso externo a Supabase.
+</Update>
+
+<Update label="2026-05-21" description="Sync de documentación con código + Día 0 (documento)" tags={["docs"]}>
 ## Documentación al día
 
 Auditoría doc-vs-código (29 hallazgos) cerrada en una sola pasada. Principales cambios:

@@ -29,6 +29,16 @@ liquidarOSAction(osId): Promise<ActionResult<{ id, partidas_auto_completadas }>>
   // cantidad_consumida=NULL, setea consumida=entregada y descuenta
   // mochila técnico (Bug 3). Reporta el count para el toast.
 
+cancelarOSAction(osId, motivo): Promise<ActionResult<{ id, estado_anterior, partidas_revertidas }>>
+  // B2 (commit bb19724). RPC cancelar_os_atomica:
+  //   - admin/operaciones only (gate explícito + RLS)
+  //   - sólo Capturada o Liquidada; Facturada/Pagada da error
+  //   - si Liquidada: revierte mochila técnico por cada partida con
+  //     consumida > 0 (INSERT…ON CONFLICT DO UPDATE), limpia
+  //     cantidad_consumida=0 para que la OS cancelada no cuente
+  //   - UPDATE os SET estado='Cancelada', fecha_cierre=now(),
+  //     motivo_cancelacion=trim(p_motivo)
+
 actualizarEntregadaAction(osId, sku, cantidadEntregada): Promise<ActionResult>
   // Almacenista actualiza cantidad ENTREGADA por SKU.
 
@@ -46,10 +56,6 @@ editarMedicionesOSAction(osId, patch): Promise<ActionResult>
 editarNotasTecnicoAction(osId, notas): Promise<ActionResult>
   // Notas libres del técnico (lo que antes iba por WhatsApp).
 ```
-
-<Callout kind="info">
-  `cancelarOSAction` no existe todavía. La tabla `os` soporta estado `Cancelada` pero la transición no está expuesta — pendiente como TODO.
-</Callout>
 
 ### `actions/onts.ts`
 
@@ -81,6 +87,13 @@ subirCFDIAction(facturaId, formData): Promise<ActionResult<{ id, uuid }>>
 
 getCFDIDownloadUrlAction(facturaId, type: 'xml' | 'pdf'): Promise<ActionResult<{ url }>>
   // Signed URL (5 min) para descargar el adjunto.
+
+crearFacturaEmitidaAction(input: CrearFacturaInput): Promise<ActionResult<{ id }>>
+  // B3 (commit 3bd7c67). admin/contable. INSERT factura en estado
+  // 'Borrador' con uuid placeholder + UPDATE bulk en emu_rows asociando
+  // las EMUs seleccionadas (factura_emitida_id + estado_cobro='facturado').
+  // Rollback automático: si la asociación de EMUs falla, DELETE la
+  // factura recién creada para no dejar lote huérfano.
 ```
 
 ### `actions/almacen-movs.ts`
@@ -114,9 +127,10 @@ marcarEMUFacturadoAction(emuIds: number[], facturaId): Promise<ActionResult<{ co
   // emu_avanzar_cobrado, cuando esa factura pase a Pagada, las filas
   // avanzan a 'cobrado' automáticamente (sólo Pagada completa — Bug 6).
 
-marcarEMURechazadoAction(emuId): Promise<ActionResult>
-  // Marca una fila como rechazada por CARSO. No acepta motivo en la
-  // signatura actual.
+marcarEMURechazadoAction(emuId, motivo): Promise<ActionResult>
+  // B1 (commit 7bfe4a8). Persiste motivo_rechazo (mín 3 chars validado
+  // server-side) + estado_cobro='rechazado' en un solo statement. Motivo
+  // se ve en el detalle expandible de la fila.
 
 asignarEMUTecnicoAction(emuId, tecnicoId): Promise<ActionResult>
   // Reasignar fila EMU a otro técnico (uso administrativo).
@@ -145,24 +159,90 @@ eliminarFotoTecnicoAction(tecnicoId): Promise<ActionResult>
 
 ```typescript
 cambiarRolUsuarioAction(userId, rol, tecnicoId): Promise<ActionResult>
-  // Admin-only. Llama RPC cambiar_rol_usuario que valida en SQL:
-  // si rol='tecnico', exige tecnico_id existente en el catálogo.
-  // Bloquea auto-degradación si sos el último admin.
+  // Admin-only. RPC cambiar_rol_usuario que valida en SQL: si rol='tecnico',
+  // exige tecnico_id en el catálogo. Bloquea auto-degradación del último admin.
 
 listUsersForAdminAction(): Promise<ActionResult<UserListRow[]>>
-  // Admin-only. Llama RPC list_users_for_admin (SECURITY DEFINER) que
-  // hace JOIN user_profiles × auth.users para mostrar email.
+  // Admin-only. RPC list_users_for_admin (SECURITY DEFINER) que hace JOIN
+  // user_profiles × auth.users (devuelve email + banned_until).
+
+// Día 0 (F4 · commit 3b4ceb4) — requieren SUPABASE_SERVICE_ROLE_KEY
+crearUsuarioAction(input: CrearUsuarioInput): Promise<ActionResult>
+  // auth.admin.createUser con email_confirm=true (sin SMTP) + cambiar_rol_usuario.
+  // Rollback automático: si la asignación de rol falla, deleteUser para no
+  // dejar la cuenta en estado inconsistente.
+desactivarUsuarioAction(userId): Promise<ActionResult>
+  // ban_duration: "876000h" (~100 años). No borra el user para preservar
+  // audit trail. Self-protection: no podés desactivarte a vos mismo.
+reactivarUsuarioAction(userId): Promise<ActionResult>
+  // ban_duration: "none".
 ```
 
 <Callout kind="info">
-  No existen actions `crearUsuarioAction` ni `desactivarUsuarioAction`. La alta de usuarios pasa por el signup de Supabase Auth (que arranca con rol `tecnico`); el admin después usa `cambiarRolUsuarioAction` para asignar el rol final.
+  `crearUsuarioAction` / `desactivarUsuarioAction` / `reactivarUsuarioAction` requieren `SUPABASE_SERVICE_ROLE_KEY` en env vars. El cliente `getSupabaseAdmin()` en `src/lib/supabase-admin.ts` devuelve `null` si la key falta, y los actions retornan un error con instrucciones. Ver `.env.example`.
 </Callout>
+
+### `actions/catalogos.ts` (Día 0 — F1 + F2)
+
+```typescript
+// Técnicos (especificos)
+crearTecnicoAction(input: TecnicoInput): Promise<ActionResult>
+editarTecnicoAction(id, patch): Promise<ActionResult>
+desactivarTecnicoAction(id): Promise<ActionResult>
+reactivarTecnicoAction(id): Promise<ActionResult>
+
+// Almacenes (especificos)
+crearAlmacenAction(input: AlmacenInput): Promise<ActionResult>
+editarAlmacenAction(id, patch): Promise<ActionResult>
+desactivarAlmacenAction(id): Promise<ActionResult>
+  // Bloquea si hay inventario con disponible > 0 — exige traspaso primero.
+reactivarAlmacenAction(id): Promise<ActionResult>
+
+// SKUs (especifico con 3 factores Telmex)
+crearSKUAction(input: SKUInput): Promise<ActionResult>
+editarSKUAction(sku, patch): Promise<ActionResult>
+toggleActivoSKUAction(sku, activo): Promise<ActionResult>
+
+// Genérico para los 5 catálogos simples (copes, empresas_empleadoras,
+// tipos_tarea, unidades_medida, clientes) — parameterizado por table
+crearSimpleAction(table: SimpleTable, row): Promise<ActionResult>
+editarSimpleAction(table, id, patch): Promise<ActionResult>
+toggleActivoSimpleAction(table, id, activo): Promise<ActionResult>
+```
+
+Todas las mutations admin-only via `current_user_role() = 'admin'` (RLS) +
+gate explícito en TS. Invalidación de cache de proceso (`invalidateCatalogosCache()`)
+para que los próximos renders vean los datos frescos.
+
+### `actions/programa-obra.ts` (B4 · commit `bcfe442`)
+
+```typescript
+crearProgramaObraAction(input: ProgramaObraInput): Promise<ActionResult<{ id }>>
+  // Admin/operaciones. INSERT en programas_obra con estado='activo'.
+  // Valida fecha_inicio <= fecha_fin.
+
+editarProgramaObraAction(id, patch): Promise<ActionResult<{ id }>>
+  // UPDATE parcial + bump updated_at.
+
+setProgramaDiaAction(programaId, tecnicoId, fecha, programada, real?, notas?)
+  // UPSERT en programa_dias usando UNIQUE constraint
+  // (programa_id, tecnico_id, fecha). Crea o edita la celda según
+  // corresponda.
+
+eliminarProgramaDiaAction(diaId, programaId): Promise<ActionResult<{ id }>>
+  // DELETE de una fila específica del Gantt.
+```
 
 ### `actions/empresa.ts` · `actions/documentos.ts`
 
 ```typescript
-actualizarEmpresaAction(patch): Promise<ActionResult>
-  // Admin-only. Patch parcial de empresa_config (RFC, REPSE, AR, CSD…).
+actualizarEmpresaAction(patch): Promise<ActionResult<{ id }>>
+  // Admin-only. Patch parcial de empresa_config. Acepta strings
+  // (razon_social, nombre_comercial, rfc, regimen_fiscal, domicilio_fiscal,
+  // cp_lugar_expedicion, telefono, email_fiscal, repse_folio,
+  // ar_aviso_registro, contrato_carso, certificado_csd_serial,
+  // certificado_csd_vencimiento) y números (tasa_iva, 0-1 fracción).
+  // Strings vacíos se guardan como NULL.
 
 subirDocumentoAction(formData): Promise<ActionResult<{ id, storage_path }>>
   // FormData con `file` + nombre + categoria + os_id?/tecnico_id?/notas?

@@ -19,7 +19,7 @@ description: Esquema Supabase, tablas, triggers, helpers.
 | `tecnicos_expediente` | tecnico_id | 6 | PII (RFC/CURP/IMSS/INE) + `foto_url` |
 | `almacenes` | text (`ALM-VC`, …) | 3 | Sedes físicas |
 | `skus` | text (clave AXAPTA) | 46 | Incluye `siatel`, `factor_alta_ftth`, `factor_mig_ftth`, `factor_mig_ftth_vieja`. **34 reales** + 12 mock históricos |
-| `os` | uuid | 86 | Estado enum, FK a `tecnicos` |
+| `os` | uuid | 86 | Estado enum, FK a `tecnicos` · `motivo_cancelacion` (B2, propagado al type OS commit `006de4e`) · `fuente` text default `'web'` reservado para Fase 2 bot WhatsApp |
 | `os_materiales` | uuid | varía | Partidas por OS (heredan RLS de la OS padre) |
 | `onts` | text (alfanumérico) | 120 | FK a `almacenes`, `tecnicos`, `os` |
 | `inventory` | (sku, almacen_id OR tecnico_id) | 63 | XOR: una fila es de almacén **o** mochila. UNIQUE `(sku, COALESCE(almacen_id,''), COALESCE(tecnico_id,''))` |
@@ -29,10 +29,12 @@ description: Esquema Supabase, tablas, triggers, helpers.
 | `devoluciones` · `devolucion_items` | uuid | — | UNIQUE `(parent_id, sku)` |
 | `traspasos` · `traspaso_items` | uuid | — | Movimientos entre almacenes WCG (`traspaso_estado` con `En tránsito` válido) |
 | `salidas_tecnico` · `salida_tecnico_items` | uuid | — | UNIQUE `(parent_id, sku)` (kit semanal) |
-| `emu_rows` | uuid | varía | Cobranza semanal técnico × concepto |
+| `emu_rows` | uuid | varía | Cobranza semanal técnico × concepto · `motivo_rechazo` (B1) |
 | `documentos` | uuid | varía | Repo central; opcional `tecnico_id` u `os_id` para scope |
 | `programas_obra` · `programa_dias` | uuid | varía | Gantt semanal CARSO |
 | `user_profiles` | uuid (FK `auth.users`) | 1+ | Rol enum (admin/almacenista/operaciones/contable/tecnico), `tecnico_id` opcional |
+| `empresa_config` | int (singleton `id=1`) | 1 | Datos fiscales WCG · `nombre_comercial` (brand short PDFs, commit `76152e6`) · `tasa_iva NUMERIC(5,4)` (default 0.16, commit `e17c884`) · razón social/RFC/domicilio leídos dinámicamente por 4 route handlers PDF |
+| `copes` | text (`CTMAC`, `CTVLL`, `CTCOM`, …) | 5 | COPEs Telmex con `area` (región). CDMX (CTMAC/CTCMO) + Villahermosa Tabasco (CTVLL/CTCOM/CTNAC) |
 
 <Callout kind="info">
   La tabla legacy `facturas` (enum `factura_estado`) y el estado `En tránsito` del enum `remision_estado` fueron eliminados en el commit `60248f3` (Bugs 9 y 13). Ya no aparecen en `database.types.ts`.
@@ -111,6 +113,10 @@ WCG App usa **RPCs `SECURITY DEFINER` llamadas explícitamente** desde las serve
 <Steps>
   <Step title="RPC liquidar_os_atomica → consume mochila" icon="package-minus" title-type="p">
     Cuando el técnico (o ops/admin) liquida la OS, `liquidarOSAction` llama esta RPC. Para cada partida con `cantidad_consumida IS NULL`, setea consumida=entregada y descuenta el delta de `inventory` (mochila técnico) vía upsert atómico `INSERT…ON CONFLICT DO UPDATE`. Si la mochila no alcanza, queda negativa (descuadre visible, no error — el técnico debe conciliar via devolución).
+  </Step>
+
+  <Step title="RPC cancelar_os_atomica → reversa de consumo (B2)" icon="x-circle" title-type="p">
+    `cancelarOSAction` llama esta RPC. Sólo Capturada o Liquidada (Facturada/Pagada da error explícito). Si Liquidada, por cada partida con `cantidad_consumida > 0`, suma esa cantidad a la mochila del técnico vía `INSERT…ON CONFLICT DO UPDATE` (mismo patrón que `devolver_al_almacen`). Limpia `cantidad_consumida = 0` para que la OS cancelada no cuente en reportes. UPDATE `os` con `motivo_cancelacion` + `fecha_cierre = now()` + `estado = 'Cancelada'`.
   </Step>
 
   <Step title="RPC confirmar_remision → incrementa almacén" icon="package-plus" title-type="p">

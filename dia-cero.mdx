@@ -34,13 +34,41 @@ description: Cartilla de arranque end-to-end. Léelo ANTES de tocar código o de
   </Step>
 
   <Step title="Tour del sidebar" icon="navigation" title-type="p">
-    Hay **9 módulos** en orden de uso: Inicio, OS, ONT, Almacén, Remisiones, EMU, F200, Facturas, Reportes, Catálogos, Técnicos, Programa de obra, Sistema. El sidebar oculta lo que tu rol no ve (sólo vos como admin ves todo).
+    Hay **13 ítems** filtrados por rol — vos como admin ves todo: Inicio, OS, ONT, Almacén, Remisiones, EMU, F200, Facturas, Reportes, Catálogos, Técnicos, Programa de obra, Sistema.
   </Step>
 
   <Step title="⌘K / Ctrl+K" icon="search" title-type="p">
     El command palette está en cualquier pantalla. Buscá por folio, alfanumérico, teléfono o RFC.
   </Step>
 </Steps>
+
+## Setup wizard (`/sistema`)
+
+Si estás recibiendo la app from-scratch (Día 0 real), seguí el **checklist Día 0** en `/sistema`. Es un banner arriba con 5 ítems en gris y CTAs:
+
+<Steps>
+  <Step title="Datos fiscales de empresa" icon="building" title-type="p">
+    `/sistema/empresa` — RFC, razón social, régimen fiscal, REPSE, AR, CSD.
+  </Step>
+  <Step title="Crear primer almacén" icon="package" title-type="p">
+    `/catalogos/almacenes` → "Nuevo almacén" → ID + nombre + ciudad. CRUD inline.
+  </Step>
+  <Step title="Dar de alta técnicos" icon="user" title-type="p">
+    `/catalogos/tecnicos` → "Nuevo técnico" → ID + alias + nombre + teléfono + zona.
+  </Step>
+  <Step title="Cargar SKUs" icon="hash" title-type="p">
+    `/catalogos/skus` → "Nuevo SKU" → AXAPTA + SIATEL + descripción + UM + precio + 3 factores Telmex. La UM viene de `unidades_medida` (creala antes si no existe).
+  </Step>
+  <Step title="Crear usuarios operativos" icon="users" title-type="p">
+    Sección "Usuarios" en `/sistema` → "Crear usuario" (requiere `SUPABASE_SERVICE_ROLE_KEY` configurada). Email + password generado random + rol + tecnico_id si aplica. Compartí la password por canal seguro.
+  </Step>
+</Steps>
+
+Cuando los 5 ítems pasan a verde, el banner muestra "Listo para operar" con el siguiente paso (registrar primera remisión).
+
+<Callout kind="info">
+  Para usar la creación de usuarios desde la UI, agregá `SUPABASE_SERVICE_ROLE_KEY` a `.env.local` (y a Vercel env vars en prod). Sin eso, sólo podés cambiar el rol de cuentas existentes vía signup. Ver `.env.example`.
+</Callout>
 
 ## El flujo que cuenta la historia (15 min)
 

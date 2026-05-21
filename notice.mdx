@@ -45,25 +45,95 @@ WCG App está deployada en https://wcg-app-v2.vercel.app con datos reales en Sup
   </Step>
 </Steps>
 
-## Backlog explícito (descubierto en la auditoría doc-vs-código del 2026-05-21)
+## Backlog explícito (post Día 0, 2026-05-22)
 
-Estas features estaban prometidas en la documentación pero no implementadas. La doc ya quedó honesta; los items siguen como pendientes:
+Features que la doc mencionaba pero no estaban implementadas. **3 cerrados, 3 abiertos:**
 
 <Steps>
-  <Step title="cancelarOSAction" icon="x-circle" title-type="p">
-    El estado `Cancelada` existe en el enum `os_estado` pero no hay action ni UI que transicione la OS hacia él. Si el técnico se da cuenta tarde que la OS no aplica (cliente no estaba, dirección errónea), no hay forma elegante de cerrarla.
+  <Step title="✅ Crear y desactivar usuarios desde admin UI" icon="check-circle" title-type="p">
+    Cerrado en `3b4ceb4` (F4 Día 0). Form en `/sistema` con password generator, ban/unban via `ban_duration`. Requiere `SUPABASE_SERVICE_ROLE_KEY` configurada — sin eso el botón muestra banner amarillo.
   </Step>
-  <Step title="Crear y desactivar usuarios desde admin UI" icon="user-x" title-type="p">
-    Hoy un admin puede cambiar rol/tecnico_id en `/sistema`, pero no puede dar de alta cuentas nuevas ni desactivar las existentes. La alta pasa por signup de Supabase (arranca como `tecnico`); la baja requiere ir al dashboard de Supabase Auth a mano.
+  <Step title="✅ CRUD para catálogos no críticos" icon="check-circle" title-type="p">
+    Cerrado en `a058605` (F2 Día 0). Los 8 catálogos editables (SKUs, técnicos, almacenes, COPEs, empresas, tipos_tarea, unidades, clientes) tienen CRUD inline desde `/catalogos/[slug]`. Sólo TIPOS_SERVICIO y ESTADOS_OS quedan como enums hardcoded.
   </Step>
-  <Step title="Editor de programa de obra" icon="bar-chart-2" title-type="p">
-    `/programa-obra` es read-only. Crear/editar compromisos del Gantt se hace en DB directo. Falta UI.
+  <Step title="✅ Empty states amigables" icon="check-circle" title-type="p">
+    Cerrado en `e702455` + `1a3405e` (F3 + F5 Día 0). 10 pantallas tienen guía cuando están vacías: Inicio, OS, ONT, Almacén, Remisiones, EMU, Facturas, Reportes, F200, Tecnicos.
   </Step>
-  <Step title="Motivo en marcarEMURechazadoAction" icon="message-square" title-type="p">
-    El action acepta sólo `emuId`. CARSO suele rechazar con razón (concepto mal, técnico ajeno, factura ya cobrada) — convendría persistir el motivo.
+  <Step title="✅ cancelarOSAction + UI (B2)" icon="check-circle" title-type="p">
+    Cerrado en `bb19724`. RPC `cancelar_os_atomica` con reversa de mochila si la OS estaba Liquidada. Sólo admin/operaciones. Bloquea cancelación de OS Facturada/Pagada.
   </Step>
-  <Step title="Crear factura emitida desde la UI" icon="file-plus" title-type="p">
-    Hoy las facturas vienen importadas de seed. Para emitir una factura nueva hay que insertar en `facturas_emitidas` desde DB. Falta UI de "Nueva factura" + integración con el flujo de selección de EMUs.
+  <Step title="✅ Editor de programa de obra (B4)" icon="check-circle" title-type="p">
+    Cerrado en `bcfe442`. `/programa-obra/nuevo` para crear + `/programa-obra/[id]` con editor de días por técnico (inline edit de cantidad_real, agregar día con clamp al periodo, % avance color-coded).
+  </Step>
+  <Step title="✅ Motivo en marcarEMURechazadoAction (B1)" icon="check-circle" title-type="p">
+    Cerrado en `7bfe4a8`. Column `motivo_rechazo` + prompt en UI + render en detalle expandible.
+  </Step>
+  <Step title="✅ Crear factura emitida desde la UI (B3)" icon="check-circle" title-type="p">
+    Cerrado en `3bd7c67`. `/facturas/nueva` con selección de EMUs pendientes, cálculo IVA en vivo, asociación atómica + rollback.
+  </Step>
+</Steps>
+
+<Callout kind="info">
+  Sin backlog explícito pendiente. Lo siguiente serían features nuevas
+  (no deuda) — por ejemplo Gantt visual del programa de obra, OCR de
+  CFDIs entrantes, integración SMTP para invitar usuarios por email
+  en vez de password compartido.
+</Callout>
+
+## Auditoría de hardcodes — H1-H4 cerrados, H5+ abiertos (2026-05-23)
+
+Auditoría disparada al sembrar COPEs de Tabasco. Encontramos 5+ datos
+"de dominio" en código que tenían que vivir en DB. Cerrados los críticos,
+quedan follow-ups menores:
+
+<Steps>
+  <Step title="✅ H1 — PDFs leen empresa_config" icon="check-circle" title-type="p">
+    `76152e6`. Los 4 PDFs (R20, vale FR-PM-12, ficha técnica, credencial)
+    ya no tienen WCG/RFC/dirección hardcodeados — todo viene de
+    `empresa_config` vía helper `empresaBrand()`. Nueva columna
+    `nombre_comercial` para el brand short del header.
+  </Step>
+  <Step title="✅ H2 — IVA configurable" icon="check-circle" title-type="p">
+    `e17c884`. Columna `empresa_config.tasa_iva NUMERIC(5,4)` (default 0.16,
+    CHECK 0-1). Soporta frontera norte (8%), exento (0%), multi-tenant.
+    Editable en `/sistema/empresa`, label en `/facturas/nueva` se ajusta
+    dinámico.
+  </Step>
+  <Step title="✅ H3 — Timeline real en OSDetail" icon="check-circle" title-type="p">
+    `006de4e`. Quitada mockdata "Mauricio Treviño" + "Esther Galindo" +
+    delta fake `+4h` SIATEL. Ahora muestra eventos derivados de
+    timestamps reales (captura + cierre/cancelación con motivo si aplica).
+  </Step>
+  <Step title="✅ H4 — Defaults multi-región en captura OS" icon="check-circle" title-type="p">
+    `006de4e`. Default técnico = primer activo (antes `T-014` hardcoded).
+    Default estado = empty (antes `CDMX`). Dropdown 32 estados México
+    (antes sólo 4 cercanos a CDMX).
+  </Step>
+  <Step title="⚠️ H5 — DEMO_CREDENTIALS de /login" icon="alert-circle" title-type="p">
+    Pendiente. `src/app/login/actions.ts:31` tiene 5 cuentas email/password
+    hardcoded para el botón "Demo". Funcional para desarrollo, **peligroso
+    en producción**. Solución antes de deploy a cliente real: gate por
+    `process.env.NODE_ENV !== 'production'` o eliminar.
+  </Step>
+  <Step title="⚠️ URL verificación credencial" icon="alert-circle" title-type="p">
+    `wcg-app-v2.vercel.app` sigue hardcoded en `/api/tecnicos/[id]/credencial`.
+    Debería leerse de `NEXT_PUBLIC_APP_URL` o derivar del host del request.
+    Bajo impacto — sólo aparece en el reverso de la credencial impresa.
+  </Step>
+  <Step title="⚠️ MAX_SIZE inconsistente" icon="alert-circle" title-type="p">
+    3 server actions con límites distintos: documentos 25 MB, fotos
+    técnico 5 MB, facturas 10 MB. Consolidar en `empresa_config.max_upload_mb`
+    cuando moleste a algún flujo.
+  </Step>
+  <Step title="⚠️ CATEGORIAS_VALIDAS de documentos" icon="alert-circle" title-type="p">
+    Lista cerrada en `src/lib/actions/documentos.ts:8-10`. Migrar a tabla
+    `documento_categorias` cuando WCG necesite agregar una categoría
+    custom ("Permiso ambiental", etc.). Bajo impacto.
+  </Step>
+  <Step title="⚠️ Umbrales potencia óptica en hint" icon="alert-circle" title-type="p">
+    Texto "Verde > -25 · ámbar -25 a -28 · rojo < -28" en
+    `OSDetailClient.tsx:708`. Si Telmex cambia la norma, hay que tocar
+    código. Mover a constante con cita cuando cambie.
   </Step>
 </Steps>
 

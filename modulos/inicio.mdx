@@ -29,6 +29,16 @@ src/components/screens/InicioClient.tsx   # Client: interactividad de tarjetas
 
 El Server Component llama a `fetchInicioData()` en `src/lib/db.ts`, que hace múltiples queries paralelas a Supabase. El Client recibe los datos como props.
 
+## Empty state Día 0
+
+Si los 7 KPIs están en cero (OS, ONT, facturas, remisiones, recientes), la pantalla muestra un saludo personalizado por nombre + 2 CTAs según rol:
+
+- **Admin** → "Ir a setup del sistema" (`/sistema` checklist Día 0).
+- **Operaciones/Técnico** → "Capturar primera OS" (`/os/nueva`).
+- **Otros roles** → mensaje pasivo "Cuando el admin termine de configurar, vas a ver acá las OS recientes, KPIs y pendientes del día."
+
+Esto evita el dashboard vacío con ceros sin guía que tenía la app antes del Día 0.
+
 <Callout kind="tip">
   El cmd palette (`⌘K`) está siempre disponible desde Inicio. Busca por folio (`R20-`), alfanumérico de ONT, serie de factura (`A-`) o RFC.
 </Callout>

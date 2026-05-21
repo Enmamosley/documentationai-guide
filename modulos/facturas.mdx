@@ -70,6 +70,36 @@ Borrador → Emitida → Enviada al lote → En revisión CARSO →
   </Step>
 </Steps>
 
+## Crear factura nueva (`/facturas/nueva`)
+
+UI para que el contable arme una factura asociando EMUs pendientes
+(commit `3bd7c67`, B3):
+
+<Steps>
+  <Step title="Datos generales" icon="file-plus" title-type="p">
+    Número (ej. `A-0001`), contratista, fecha, proyecto, lote envío
+    CARSO opcional + códigos contables opcionales (obra CIC, orden de
+    compra).
+  </Step>
+  <Step title="Seleccionar EMUs pendientes" icon="check-square" title-type="p">
+    Tabla con todas las filas EMU en `estado_cobro = 'pendiente'`.
+    Checkboxes por fila o "Seleccionar todas". 4 stat cards en vivo
+    muestran el conteo y los totales (subtotal, IVA, total).
+
+    La **tasa de IVA** viene de `empresa_config.tasa_iva` (default 0.16).
+    Régimen frontera norte usa 0.08, régimen exento usa 0. El label del
+    stat card se ajusta dinámico — "IVA (16%)" / "IVA (8%)" / "IVA (0%)".
+    Editable en `/sistema/empresa`. El campo "Contratista" pre-rellena
+    con `empresa_config.razon_social`.
+  </Step>
+  <Step title="Crear" icon="zap" title-type="p">
+    INSERT en `facturas_emitidas` con estado `Borrador` + `uuid`
+    placeholder. UPDATE bulk en las EMUs seleccionadas para asociarlas
+    (`factura_emitida_id` + `estado_cobro = 'facturado'`). Rollback
+    automático: si la asociación falla, DELETE la factura recién creada.
+  </Step>
+</Steps>
+
 ## Server Actions
 
 ```
@@ -88,8 +118,14 @@ src/lib/actions/facturas.ts
 
   getCFDIDownloadUrlAction(facturaId, type: 'xml' | 'pdf')
     // Signed URL (5 min) para descargar el adjunto.
+
+  crearFacturaEmitidaAction(input: CrearFacturaInput)
+    // B3: INSERT factura en Borrador con uuid placeholder + asociar
+    // EMUs seleccionadas (estado_cobro → 'facturado'). Rollback automático.
 ```
 
 <Callout kind="info">
-  No existen actions `crearBorradorFacturaAction` ni `cambiarEstadoFacturaAction` separadas — toda la cobranza pasa por el patch parcial de `actualizarCobranzaAction`. La factura se crea desde el backend cuando se importan los lotes de CARSO; no hay UI de "nueva factura" todavía.
+  El uuid arranca como `pendiente-<timestamp>` y se reemplaza al subir
+  el XML real con `subirCFDIAction`. Esto permite armar la factura
+  internamente antes de timbrarla en el PAC.
 </Callout>

@@ -1,29 +1,89 @@
 ---
 title: Programa de Obra
-description: Gantt semanal CARSO · ruta /programa-obra
+description: Cronograma semanal CARSO · ruta /programa-obra, /nuevo, /[id]
 ---
 
 ## Qué muestra
 
-`/programa-obra` es el **Gantt semanal** que CARSO usa para planificar carga de trabajo por zona y técnico. Cada barra es un compromiso de instalaciones / migraciones por semana ISO.
+`/programa-obra` es el cronograma semanal que CARSO emite y que el supervisor de obra firma. Cada programa cubre un periodo (semana ISO típica) con un PEP, área, tipo de trabajo, responsables, y días programados × técnico.
 
-## Vista
+## Pantallas
 
-- **Filas**: técnicos agrupados por zona (Norte, Sur, etc.)
-- **Columnas**: semanas (ISO) — usualmente 6-8 semanas hacia adelante
-- **Barras**: compromiso de altas o migraciones para esa semana × técnico
-- **Indicadores**: % avance vs comprometido, sobre/sub-asignación
+<Columns cols={3}>
+  <Card title="/programa-obra" icon="bar-chart-2">
+    Listado de programas con KPIs (% avance, total programado vs real).
+  </Card>
+  <Card title="/programa-obra/nuevo" icon="plus">
+    Form de alta — identidad del programa (PEP, área, tipo), periodo, responsables.
+  </Card>
+  <Card title="/programa-obra/[id]" icon="edit">
+    Editor de días × técnico con stat cards y CRUD inline.
+  </Card>
+</Columns>
+
+## Alta (`/programa-obra/nuevo`)
+
+Form en 3 secciones:
+
+<Steps>
+  <Step title="Identidad" icon="hash" title-type="p">
+    PEP (Plan de Ejecución de Proyecto), área (FTTH CDMX Norte…), tipo de trabajo, ruta.
+  </Step>
+  <Step title="Periodo + responsables" icon="users" title-type="p">
+    `fecha_inicio` y `fecha_fin` (obligatorios, valida cliente y server). Supervisor (CARSO) y jefe de obra (WCG) desde dropdown del catálogo de técnicos. Constructor / contratista (default "WCG Servicios").
+  </Step>
+  <Step title="Códigos contables CARSO" icon="info" title-type="p">
+    OEI, OE, CTL/DTO, operación, indicador de producción. Todos opcionales. Notas libres al pie.
+  </Step>
+</Steps>
+
+Al guardar redirige al editor `/programa-obra/[id]` con el programa recién creado.
+
+## Editor (`/programa-obra/[id]`)
+
+Detalle del programa con metadata en el header + sección editable de días:
+
+- **Stat cards**: días registrados · total programado · total real · % avance (color-coded: verde ≥100%, amarillo ≥80%, rojo <80%).
+- **Tabla días × técnico**: cada fila es `(programa, técnico, fecha)` con cantidad programada, real y notas. UNIQUE constraint en DB asegura no-duplicados.
+- **Inline edit de `cantidad_real`**: el supervisor llena al cerrar cada día.
+- **Form "Agregar día"** expandible: técnico + fecha (clamp al periodo del programa) + cantidad programada.
+- **Delete por fila** con confirm.
+
+<Callout kind="info">
+  El editor es lista plana de filas, no Gantt visual aún. Si el cliente
+  pide vista de calendario (semana × técnico como grilla), queda como v2.
+  El modelo de datos (UNIQUE `(programa_id, tecnico_id, fecha)`) está
+  preparado.
+</Callout>
 
 ## Permisos
 
 | Acción | Roles |
 |---|---|
-| Ver listado | admin, **operaciones** |
-| Editar compromisos | — *pendiente* |
+| Ver listado / detalle | admin, **operaciones** |
+| Crear programa | admin, operaciones |
+| Editar metadata | admin, operaciones |
+| Agregar / editar / eliminar día | admin, operaciones |
 
-<Callout kind="alert">
-  **Estado actual: read-only.** La UI muestra los programas existentes (con su PEP, supervisor, % avance, etc.) pero **no hay editor visual del Gantt**. El botón "Nuevo programa" fue removido (era cosmético). Si necesitás cargar un programa nuevo, hacelo manualmente en DB sobre `programas_obra` + `programa_dias`. El empty state lo indica explícitamente.
-</Callout>
+RLS: policies `"Admin/ops mutate programas_obra"` y `"Admin/ops mutate programa_dias"` con `current_user_role() IN ('admin','operaciones')`.
+
+## Server Actions
+
+```typescript
+// src/lib/actions/programa-obra.ts
+crearProgramaObraAction(input: ProgramaObraInput): Promise<ActionResult<{ id: number }>>
+  // INSERT en programas_obra con estado='activo'. Valida fechas.
+
+editarProgramaObraAction(id, patch): Promise<ActionResult<{ id: number }>>
+  // UPDATE parcial + bump updated_at.
+
+setProgramaDiaAction(programaId, tecnicoId, fecha, programada, real?, notas?)
+  // UPSERT en programa_dias usando UNIQUE constraint (programa_id, tecnico_id, fecha).
+  // Crea o edita la celda según corresponda.
+
+eliminarProgramaDiaAction(diaId, programaId): Promise<ActionResult<{ id: number }>>
+  // DELETE de una fila específica.
+```
 
 <Callout kind="info">
   Este módulo es de planeación. No genera OS automáticamente — sólo es el plan. Las OS reales se capturan desde `/os/nueva` cuando el técnico ya hizo el servicio.
