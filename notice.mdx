@@ -1,52 +1,56 @@
 ---
-title: Notice
-description: Clear guidance that this site is a starter template.
+title: Aviso
+description: Estado actual y alcance del proyecto.
 ---
 
-## This is a sample
+## Estado: MVP funcional con base real
 
-<Callout kind="alert" collapsed="false">
-This site ships with placeholder content. Review and replace it with your real documentation before sharing with customers.
+WCG App está deployada en https://wcg-app-v2.vercel.app con datos reales en Supabase (proyecto `wcg-app`, id `lvqqzpabnmdkamxgxrob`). Se puede usar para demos con clientes y validación operativa.
+
+<Callout kind="alert">
+  La Fase 1 está diseñada para **desktop 1280–1440px**. La regla `min-width: 1280px` fuerza scroll horizontal en ventanas más angostas en vez de colapsar el layout. Móvil queda fuera de scope hasta la Fase 2.
 </Callout>
 
-## What is safe to change
+## Qué está adentro
 
-You can edit any page content, rename sections, and update navigation structure. If you do not need the API Reference or Help Center, you can also remove those tabs from `documentation.json`.
-
-<Columns cols="2">
-  <Card title="Page content" icon="file-text" horizontal="false">
-    Edit any `.mdx` file in this repo.
+<Columns cols={2}>
+  <Card title="9 módulos en producción" icon="check-circle" horizontal="false">
+    Inicio, OS, ONT, Almacén, EMU, Facturas, F200, Catálogos, Sistema — más Remisiones, Programa de Obra, Técnicos y Reportes agregados después.
   </Card>
-
-  <Card title="Navigation" icon="list" horizontal="false">
-    Update labels, order, and visible tabs in `documentation.json`.
+  <Card title="34 SKUs reales" icon="hash" horizontal="false">
+    Importados de `Data/RECALCULO ALTA FO ACTUALIZADO.xlsx` con los 3 factores Telmex (Alta FTTH / Migración / Migración vieja).
   </Card>
-
-  <Card title="API Reference" icon="code" horizontal="false">
-    Swap `openapi.yaml` with your own spec, or remove the API Reference tab from `documentation.json` if you do not need it.
+  <Card title="RLS activo" icon="shield" horizontal="false">
+    Todas las tablas tienen `to authenticated using (true)` para SELECT y policies por rol para INSERT/UPDATE. Las mutaciones pasan por Server Actions con cookies.
   </Card>
-
-  <Card title="Help Center" icon="help-circle" horizontal="false">
-    Replace FAQs, guides, and troubleshooting with your real support content, or remove the Help Center tab from `documentation.json` if it is not part of your docs.
+  <Card title="F200 .xlsx real" icon="download" horizontal="false">
+    `/api/f200` genera el reporte con `exceljs` (header congelado, totales, formato Telmex v2.4) y lo descarga directo.
   </Card>
 </Columns>
 
-## Recommended first changes
+## Qué falta
 
 <Steps>
-  <Step title="Rename pages" icon="edit" title-type="p">
-    Update page titles and descriptions to match your product.
+  <Step title="Validación con usuarios reales" icon="users" title-type="p">
+    El plan está en `research/plan_research_mvp.md`. Sigue siendo lo más valioso antes de seguir construyendo features.
   </Step>
-
-  <Step title="Replace sample links" icon="link" title-type="p">
-    Remove any placeholder URLs and add your own.
+  <Step title="Multi-usuario en producción" icon="user-plus" title-type="p">
+    Pre-crear cuentas para Almacén / Operaciones / Contable y validar que cada rol sólo ve/edita lo que le toca.
   </Step>
-
-  <Step title="Remove unused tabs and sections" icon="settings" title-type="p">
-    Open `documentation.json` and remove entries for tabs or sections you do not plan to use, such as the API Reference or Help Center, without deleting any files.
+  <Step title="Importar el resto de datos reales" icon="upload" title-type="p">
+    `Data/EMU PENDIENTE POR COBRAR 2025.xlsx` y `Data/RELACION FACTURAS CARSO-MAYO-LOTE-1.XLSX` siguen como seeds sintéticos.
   </Step>
-
-  <Step title="Remove unused pages" icon="trash" title-type="p">
-    Delete any `.mdx` pages you do not plan to maintain so the sidebar only shows relevant content.
+  <Step title="Móvil para técnicos" icon="smartphone" title-type="p">
+    El técnico en campo necesita una vista mobile. Por ahora se usa desktop o tablet horizontal.
   </Step>
 </Steps>
+
+## Carpetas hermanas (no son código)
+
+```
+Data/         # Documentos fuente de WCG (Excel, PDF, DOCX). Origen del dominio.
+design/       # Brief que se pasó a Claude Design.
+research/     # Plan de research de usuarios (pre-validación del MVP).
+prototype/    # Bundle original de Claude Design — referencia 1:1.
+docs/         # Documentación interna (auditorías, plan de ataque, esta guía).
+```

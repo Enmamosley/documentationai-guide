@@ -1,0 +1,134 @@
+---
+title: Base de datos
+description: Esquema Supabase, tablas, triggers, helpers.
+---
+
+## Proyecto
+
+- **Proveedor**: Supabase
+- **Project ID**: `lvqqzpabnmdkamxgxrob`
+- **Región**: `us-east-2`
+- **Postgres**: 17
+- **API**: PostgREST autogenerado + Row-Level Security
+
+## Tablas
+
+| Tabla | PK | Filas iniciales | Notas |
+|---|---|---|---|
+| `tecnicos` | text (`T-014`, …) | 6 | Padrón de técnicos |
+| `almacenes` | text (`ALM-VC`, …) | 3 | Sedes físicas |
+| `skus` | text (clave AXAPTA) | 46 | Incluye `siatel`, `factor_alta_ftth`, `factor_mig_ftth`, `factor_mig_ftth_vieja`. **34 reales** + 12 mock históricos |
+| `os` | uuid | 86 | Estado enum, FK a `tecnicos` |
+| `onts` | text (alfanumérico) | 120 | FK a `almacenes`, `tecnicos`, `os` |
+| `inventory` | (sku, almacen_id OR tecnico_id) | 63 | XOR: una fila es de almacén **o** mochila |
+| `facturas` | uuid | 28 | Enum de 10 estados |
+| `remisiones` | text (número CARSO) | varía | Estado en tránsito/recibida/confirmada |
+| `emu_rows` | uuid | varía | Cobranza semanal técnico × concepto |
+| `oc_candidates` | uuid | 6 | Legacy del flujo original (no se usa) |
+| `user_profiles` | uuid (FK `auth.users`) | 1+ | Rol enum (admin/almacenista/operaciones/contable/tecnico) |
+
+## Enums
+
+```sql
+estado_os: 'Capturada' | 'Liquidada' | 'Facturada' | 'Pagada' | 'Cancelada'
+estado_ont: 'En almacén' | 'Con técnico' | 'Liquidada' | 'Facturada' | 'Dañada'
+estado_factura: 'Borrador' | 'Emitida' | 'Enviada al lote' |
+                'En revisión CARSO' | 'Aceptada' | 'Rechazada' |
+                'Por pagar' | 'Pagada parcial' | 'Pagada' | 'Cancelada'
+estado_remision: 'En tránsito' | 'Recibida' | 'Confirmada'
+tipo_telmex: 'alta_ftth' | 'migracion_ftth' | 'migracion_ftth_vieja' | 'no_aplica'
+user_role: 'admin' | 'almacenista' | 'operaciones' | 'contable' | 'tecnico'
+```
+
+## RLS (Row-Level Security)
+
+<Callout kind="alert" collapsed="false">
+  **RLS está ACTIVO en todas las tablas.** Sin sesión válida, todas las queries fallan con `42501`. No se confía en el cliente — la seguridad vive en Postgres.
+</Callout>
+
+### Lectura
+
+Todas las tablas tienen una policy uniforme:
+
+```sql
+CREATE POLICY <tabla>_select_all ON <tabla>
+  FOR SELECT TO authenticated USING (true);
+```
+
+Cualquier usuario autenticado puede leer todo. Sin sesión → no ve nada.
+
+### Mutaciones
+
+Cada tabla tiene policies por rol via `current_user_role()`:
+
+| Tabla | INSERT | UPDATE |
+|---|---|---|
+| `os` | admin · operaciones · tecnico (suya) | admin · operaciones · tecnico (suya) |
+| `onts` | admin · almacenista | admin · operaciones · almacenista · tecnico (asignada) |
+| `facturas` | admin · contable | admin · contable |
+| `inventory` | admin · almacenista | admin · almacenista (vía triggers atómicos) |
+| `remisiones` | admin · almacenista · operaciones | admin · almacenista |
+| `emu_rows` | trigger SQL (auto al liquidar OS) | admin · contable |
+| `user_profiles` | admin | admin |
+
+### Helper SQL
+
+```sql
+CREATE FUNCTION current_user_role() RETURNS user_role AS $$
+  SELECT rol FROM user_profiles WHERE id = auth.uid()
+$$ LANGUAGE sql STABLE;
+```
+
+## Triggers atómicos
+
+<Steps>
+  <Step title="liquidar_os → consume mochila" icon="package-minus" title-type="p">
+    Cuando `os.estado` pasa a `Liquidada`, un trigger BEFORE UPDATE descuenta de `inventory` (mochila del técnico) las cantidades de `os_partidas`. Si no hay stock, falla con `23514` y la mutación se aborta.
+  </Step>
+
+  <Step title="confirmar_remision → incrementa almacén" icon="package-plus" title-type="p">
+    Al pasar `remisiones.estado` a `Confirmada`, las partidas suben el `disponible` del almacén destino. Atómico via row-level locking.
+  </Step>
+
+  <Step title="factura_pagada → EMU cobrado" icon="check-circle" title-type="p">
+    Cuando `facturas.estado` pasa a `Pagada`, todas las `emu_rows` con `factura_id = NEW.id` pasan a `Cobrado` y se sella `fecha_cobro`.
+  </Step>
+
+  <Step title="prevent_role_escalation" icon="shield" title-type="p">
+    Trigger en `user_profiles` BEFORE UPDATE: si `NEW.rol != OLD.rol` y `auth.uid() != admin`, se aborta. (Bug 4 cerrado en `6436986`.)
+  </Step>
+</Steps>
+
+## Tres clientes Supabase
+
+```typescript
+// src/lib/supabase-server.ts
+getSupabaseServer()        // Server Components, Server Actions, Route Handlers
+                           // Cookies → JWT → RLS evalúa el rol
+
+// src/lib/supabase-client.ts
+supabase                    // Client Components (raramente; preferir actions)
+
+// middleware.ts
+createServerClient(...)     // Refresh de tokens en cada request
+```
+
+## Re-seed reproducible
+
+```bash
+# Semillas RNG fijas → mismos datos que el prototipo original
+node scripts/build-seed.mjs > scripts/seed.sql
+node scripts/build-telmex-import.mjs > scripts/telmex-import.sql
+
+# Aplicar con tu cliente psql preferido contra el proyecto Supabase
+psql $SUPABASE_DB_URL -f scripts/seed.sql
+psql $SUPABASE_DB_URL -f scripts/telmex-import.sql
+```
+
+## Regenerar tipos
+
+```bash
+npx supabase gen types typescript \
+  --project-id lvqqzpabnmdkamxgxrob \
+  > src/lib/database.types.ts
+```

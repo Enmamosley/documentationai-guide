@@ -1,0 +1,82 @@
+---
+title: Resembrar la base demo
+description: Volver a foja cero para una demo limpia.
+---
+
+## Cuándo correrlo
+
+- Antes de una demo importante, para tener datos predecibles.
+- Después de probar mutaciones destructivas que ensuciaron el estado.
+- Cuando se cambia el script de seed y querés ver el nuevo estado.
+
+<Callout kind="alert" collapsed="false">
+  Esto **borra todos los datos** de las tablas operativas (excepto `auth.users` y `user_profiles`). Si hay datos reales del cliente, no corras esto sin backup.
+</Callout>
+
+## Pasos
+
+<Steps>
+  <Step title="Regenerar los .sql" icon="refresh-cw" title-type="p">
+    ```bash
+    cd /Users/moss/dev/wcg-app
+    node scripts/build-seed.mjs > scripts/seed.sql
+    node scripts/build-telmex-import.mjs > scripts/telmex-import.sql
+    ```
+
+    Los .sql resultantes son reproducibles (RNG con semilla fija).
+  </Step>
+
+  <Step title="Truncate" icon="trash-2" title-type="p">
+    ```bash
+    psql $SUPABASE_DB_URL -f scripts/seed_00_truncate.sql
+    ```
+
+    Borra `os`, `onts`, `inventory`, `facturas`, `remisiones`, `emu_rows`, `oc_candidates`. Mantiene `tecnicos`, `almacenes`, `skus`, `user_profiles`.
+  </Step>
+
+  <Step title="Aplicar seeds en orden" icon="upload" title-type="p">
+    ```bash
+    psql $SUPABASE_DB_URL -f scripts/seed_01_tecnicos.sql
+    psql $SUPABASE_DB_URL -f scripts/seed_02_almacenes.sql
+    psql $SUPABASE_DB_URL -f scripts/seed_03_skus.sql
+    psql $SUPABASE_DB_URL -f scripts/seed_04_os.sql
+    psql $SUPABASE_DB_URL -f scripts/seed_05_onts.sql
+    psql $SUPABASE_DB_URL -f scripts/seed_06_inventory.sql
+    psql $SUPABASE_DB_URL -f scripts/telmex-import.sql
+    psql $SUPABASE_DB_URL -f scripts/real-data.sql
+    ```
+
+    El orden importa (FKs).
+  </Step>
+
+  <Step title="Verificar" icon="check-circle" title-type="p">
+    ```bash
+    psql $SUPABASE_DB_URL -c "SELECT count(*) FROM os;"
+    # → 86
+    psql $SUPABASE_DB_URL -c "SELECT count(*) FROM onts;"
+    # → 120
+    psql $SUPABASE_DB_URL -c "SELECT count(*) FROM skus;"
+    # → 46
+    ```
+  </Step>
+</Steps>
+
+## Encontrar `SUPABASE_DB_URL`
+
+En el dashboard Supabase: **Project Settings → Database → Connection string**. Usar la **Direct connection** (con password real) para correr migrations.
+
+Formato:
+```
+postgresql://postgres:<password>@db.lvqqzpabnmdkamxgxrob.supabase.co:5432/postgres
+```
+
+## Cambiar la semilla
+
+Si querés datos sintéticos diferentes:
+
+```js
+// scripts/build-seed.mjs
+const rng = mulberry32(hash("wcg-2026"));  // ← cambiar la string
+```
+
+Cambiar la string genera datos consistentes pero distintos.

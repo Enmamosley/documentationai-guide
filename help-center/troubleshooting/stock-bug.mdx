@@ -1,0 +1,81 @@
+---
+title: Stock negativo o duplicado
+description: El inventario muestra cantidades que no cuadran.
+---
+
+## Síntomas
+
+- Una fila de `inventory` tiene `disponible < 0`.
+- Una misma `(sku, almacen)` aparece duplicada en `/almacen`.
+- Surtir a un técnico no actualiza el stock visible.
+
+## Causas históricas (ya resueltas)
+
+<Callout kind="info">
+  Estos bugs se cerraron en los commits `1d8d74c`, `cbd22f3` y `822116d` (mayo 2026). Si seguís viendo el síntoma, abrir issue con repro — son regresiones.
+</Callout>
+
+<Steps>
+  <Step title="Race condition al surtir" icon="zap" title-type="p">
+    Dos almacenistas surtían al mismo tiempo. Cada uno leía `disponible = 10`, decrementaba en 5 y guardaba `disponible = 5` → la segunda operación pisaba la primera.
+
+    **Fix**: upserts atómicos con `UPDATE … RETURNING` + `CHECK (disponible >= 0)` que aborta con `23514` si la operación deja stock negativo.
+  </Step>
+
+  <Step title="Filas duplicadas por upsert" icon="copy" title-type="p">
+    El upsert original usaba `INSERT … ON CONFLICT DO UPDATE` pero el conflict target no incluía el `XOR almacen_id / tecnico_id`. Resultado: dos filas para el mismo SKU.
+
+    **Fix**: índice único compuesto `(sku, COALESCE(almacen_id, ''), COALESCE(tecnico_id, ''))`.
+  </Step>
+
+  <Step title="Sin auto-consumo al liquidar" icon="package-x" title-type="p">
+    Liquidar una OS no descontaba la mochila del técnico → stock se "regeneraba" infinitamente.
+
+    **Fix**: trigger BEFORE UPDATE en `os` cuando `estado → 'Liquidada'` que decrementa `inventory` de la mochila con las cantidades de `os_partidas`.
+  </Step>
+</Steps>
+
+## Cómo investigar si vuelve a pasar
+
+```sql
+-- Filas con stock negativo (no debería haber ninguna)
+SELECT * FROM inventory WHERE disponible < 0;
+
+-- Duplicados de (sku, almacen) en stock central
+SELECT sku, almacen_id, count(*)
+  FROM inventory
+  WHERE almacen_id IS NOT NULL
+  GROUP BY sku, almacen_id
+  HAVING count(*) > 1;
+
+-- Duplicados de (sku, tecnico) en mochilas
+SELECT sku, tecnico_id, count(*)
+  FROM inventory
+  WHERE tecnico_id IS NOT NULL
+  GROUP BY sku, tecnico_id
+  HAVING count(*) > 1;
+```
+
+Si alguna de estas devuelve filas, hay regresión — abrir issue con la salida.
+
+## Cómo reparar a mano (último recurso)
+
+```sql
+-- Consolidar duplicados sumando cantidades
+WITH dup AS (
+  SELECT sku, tecnico_id, SUM(disponible) AS total_disp
+    FROM inventory
+    WHERE tecnico_id = 'T-014'
+    GROUP BY sku, tecnico_id
+    HAVING count(*) > 1
+)
+-- ... usar como base de un UPDATE + DELETE manual
+```
+
+<Callout kind="alert">
+  Cualquier corrección manual debe hacerse con cuidado y backup previo. Después de reparar, verificá con las queries de detección arriba.
+</Callout>
+
+## Auditoría preventiva
+
+El script `scripts/run-real-seed.mjs` y los seeds particionados garantizan que la base empieza limpia. Si sospechás regresión, [resembrar la base](/help-center/guides/seed-reset) es la forma más rápida de descartar contaminación previa.

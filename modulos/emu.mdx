@@ -1,0 +1,76 @@
+---
+title: EMU (Estimación Mensual de Unidades)
+description: Cobranza semanal técnico × concepto · ruta /emu
+---
+
+## Qué es la EMU
+
+**EMU** = **E**stimación **M**ensual de **U**nidades. Es el cruce semanal de:
+
+- **Filas**: técnicos.
+- **Columnas**: conceptos agrupados en 4 hojas — **A4** (Altas), **CO** (Cobre), **FO** (Fibra), **QI** (Calidad).
+
+Cada celda representa cuántas unidades de ese concepto cobró ese técnico esa semana. Es el documento operativo que se cruza contra las facturas emitidas a CARSO.
+
+<Callout kind="info">
+  La EMU vive en `Data/EMU PENDIENTE POR COBRAR 2025.xlsx` históricamente. La app la reemplaza con una vista interactiva más una capa de tracking de cobranza por fila.
+</Callout>
+
+## Pantalla `/emu`
+
+- **4 tabs**: A4 / CO / FO / QI
+- **Filtros**: técnico, periodo (semana ISO), estado de cobranza
+- **Indicadores**: deltas vs semana anterior, % cobrado, monto pendiente
+
+## Ciclo de cobranza por fila
+
+```
+Pendiente → Asociado a factura → Cobrado
+            ↓
+        Rechazado
+```
+
+<Steps>
+  <Step title="Pendiente" icon="clock" title-type="p">
+    La fila EMU se generó al liquidar OS pero aún no se ligó a un CFDI.
+  </Step>
+  <Step title="Asociado" icon="link" title-type="p">
+    Contabilidad la vincula a una factura emitida. Mientras la factura no se pague, la fila sigue "asociada".
+  </Step>
+  <Step title="Cobrado" icon="check-circle" title-type="p">
+    **Automático vía trigger SQL**: cuando la factura asociada pasa a estado "Pagada", todas las filas EMU asociadas pasan a "Cobrado" sin intervención manual.
+  </Step>
+  <Step title="Rechazado" icon="x-circle" title-type="p">
+    Contabilidad marca la fila como rechazada por CARSO. Requiere reproceso (re-emitir factura, ajustar concepto).
+  </Step>
+</Steps>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver `/emu` | admin, operaciones, contable, **técnico** (sólo sus filas) |
+| Asociar fila a factura | admin, **contable** |
+| Marcar rechazada | admin, contable |
+
+<Callout kind="tip">
+  El técnico ve sólo SUS filas EMU como vista de cobranza personal: "esto es lo que me toca cobrar esta semana".
+</Callout>
+
+## Server Actions
+
+```
+src/lib/actions/emu.ts
+  asociarEMUFacturaAction(emuId, facturaId)
+  marcarRechazadaEMUAction(emuId, motivo)
+  # cobrar es automático via trigger when factura.estado → "Pagada"
+```
+
+## Helpers
+
+```
+src/lib/emu-helpers.ts
+  buildEMUMatrix(rows)         # pivota a técnico × concepto
+  weekISO(date)                # YYYY-WNN
+  deltaVsPreviousWeek(rows)
+```

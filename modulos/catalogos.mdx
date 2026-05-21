@@ -1,0 +1,51 @@
+---
+title: Catálogos
+description: Índice de catálogos auxiliares · ruta /catalogos, /catalogos/[slug]
+---
+
+## Qué contiene
+
+`/catalogos` es el índice de todos los catálogos que la app usa. Cada catálogo se abre en `/catalogos/[slug]` como tabla editable.
+
+| Slug | Contenido | Filas |
+|---|---|---|
+| `skus` | Materiales AXAPTA con factor Telmex × 3 | 46 (34 reales + 12 históricos) |
+| `tecnicos` | Padrón de técnicos activos | 6 |
+| `almacenes` | Sedes físicas | 3 |
+| `tipos-servicio` | Catálogo Telmex de tipos de servicio | ~20 |
+| `motivos-rechazo` | Códigos de rechazo CARSO | ~15 |
+| `zonas` | Zonas geográficas para asignación | ~6 |
+| `unidades-medida` | UM del inventario (pieza, metro, kg) | ~10 |
+
+## SKUs
+
+El catálogo más importante. Cada SKU tiene:
+
+- **clave AXAPTA** (PK)
+- **siatel** (clave de 7 dígitos que Telmex usa internamente)
+- **desc** (descripción humana)
+- **um** (pieza, m, kg…)
+- **precio** MXN
+- **factor_alta_ftth**, **factor_mig_ftth**, **factor_mig_ftth_vieja**
+
+Los factores se usan en `/os/nueva` para pre-rellenar la sugerencia de material según el tipo de servicio.
+
+<Callout kind="info">
+  Los 34 SKUs reales vienen de `Data/RECALCULO ALTA FO ACTUALIZADO.xlsx`. El seed los importa con `node scripts/build-telmex-import.mjs`.
+</Callout>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver catálogos | todos excepto **técnico** |
+| Editar SKUs / precios | **admin** |
+| Editar técnicos / almacenes | admin |
+
+## Carga inicial
+
+```bash
+node scripts/build-seed.mjs > scripts/seed.sql
+node scripts/build-telmex-import.mjs > scripts/telmex-import.sql
+# Aplica con psql contra el proyecto Supabase
+```

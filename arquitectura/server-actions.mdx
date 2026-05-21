@@ -1,0 +1,140 @@
+---
+title: Server Actions
+description: Cómo se mutan datos. Inventario completo de actions.
+---
+
+## Por qué Server Actions
+
+Toda mutación pasa por una Server Action (`'use server'`) en `src/lib/actions/`. Razones:
+
+1. **RLS evalúa con el JWT real del usuario** — el cliente Supabase del servidor lee cookies con `getSupabaseServer()` y la query llega autenticada a Postgres.
+2. **Sin tokens secretos en el cliente** — sólo viaja la publishable key (anon).
+3. **Validación en un solo lugar** — Zod no es necesario porque Postgres + RLS rechazan inputs inválidos.
+
+<Callout kind="alert">
+  **Nunca mutar desde Client Components** con `fetch('/api/...', { method: 'POST' })`. Usa Server Actions. Las únicas Route Handlers son para **descargas** (PDFs, XLSX, CSVs).
+</Callout>
+
+## Inventario
+
+### `actions/os.ts`
+
+```typescript
+createOSAction(data: OSCreateInput): Promise<{ id, folio }>
+liquidarOSAction(osId: string): Promise<void>
+cancelarOSAction(osId: string, motivo: string): Promise<void>
+agregarPartidaAction(osId, sku, qty): Promise<void>
+```
+
+### `actions/onts.ts`
+
+```typescript
+asignarONTAction(alfanumerico, tecnicoId): Promise<void>
+liquidarONTAction(alfanumerico, osId): Promise<void>
+marcarONTDanadaAction(alfanumerico, motivo): Promise<void>
+capturarLoteAction(rows: ONTLoteInput[]): Promise<{ insertadas, errores }>
+```
+
+### `actions/facturas.ts`
+
+```typescript
+crearBorradorFacturaAction(data): Promise<{ id }>
+adjuntarCFDIAction(facturaId, xmlFile, pdfFile): Promise<void>
+cambiarEstadoFacturaAction(facturaId, nuevoEstado, motivo?): Promise<void>
+marcarPagadaAction(facturaId, fechaPago): Promise<void>
+```
+
+### `actions/remisiones.ts`
+
+```typescript
+crearRemisionAction(numero, almacenDestino, items[]): Promise<void>
+recibirRemisionAction(numero): Promise<void>
+confirmarRemisionAction(numero): Promise<void>   // ← incrementa stock
+```
+
+### `actions/almacen-movs.ts`
+
+```typescript
+surtirAction(tecnicoId, items[]): Promise<void>
+traspasoAction(srcAlmacen, dstAlmacen, items[]): Promise<void>
+devolucionAction(tecnicoId, items[]): Promise<void>
+```
+
+### `actions/emu.ts`
+
+```typescript
+asociarEMUFacturaAction(emuId, facturaId): Promise<void>
+marcarRechazadaEMUAction(emuId, motivo): Promise<void>
+// Cobrado es automático via trigger SQL cuando factura.estado → "Pagada"
+```
+
+### `actions/tecnicos.ts`
+
+```typescript
+actualizarExpedienteAction(tecnicoId, data): Promise<void>   // admin-only
+asignarHerramientaAction(tecnicoId, items[]): Promise<void>
+asignarVehiculoAction(tecnicoId, placa, marca, modelo): Promise<void>
+```
+
+### `actions/users.ts`
+
+```typescript
+crearUsuarioAction(email, password, rol): Promise<void>
+actualizarRolAction(userId, nuevoRol): Promise<void>          // admin-only
+desactivarUsuarioAction(userId): Promise<void>
+```
+
+### `actions/empresa.ts` · `actions/documentos.ts`
+
+```typescript
+actualizarEmpresaAction(data): Promise<void>
+subirDocumentoAction(file, categoria): Promise<{ id, url }>
+eliminarDocumentoAction(documentoId): Promise<void>
+```
+
+## Patrón estándar
+
+```typescript
+'use server';
+
+import { getSupabaseServer } from '@/lib/supabase-server';
+import { revalidatePath } from 'next/cache';
+
+export async function liquidarOSAction(osId: string) {
+  const supabase = await getSupabaseServer();
+
+  // RLS hace el trabajo pesado: si el usuario no puede, falla acá.
+  const { error } = await supabase
+    .from('os')
+    .update({ estado: 'Liquidada' })
+    .eq('id', osId);
+
+  if (error) {
+    // 42501 → RLS violation
+    // 23514 → trigger atómico (stock insuficiente)
+    throw new Error(traducirError(error));
+  }
+
+  revalidatePath(`/os/${osId}`);
+  revalidatePath('/os');
+}
+```
+
+## Errores frecuentes
+
+| Código PG | Significado | Causa típica |
+|---|---|---|
+| `42501` | RLS violation | El rol no tiene policy de INSERT/UPDATE para esa tabla |
+| `23514` | Check constraint violation | Trigger atómico de stock detectó cantidad < 0 |
+| `23505` | Unique violation | Folio duplicado, alfanumérico repetido |
+| `23503` | FK violation | Referencia a un tecnico/almacen que no existe |
+
+## Revalidación
+
+Después de cada action:
+
+```typescript
+revalidatePath('/ruta/afectada');
+```
+
+Esto invalida el cache del Server Component y el siguiente render hace fetch fresco a Supabase.

@@ -1,0 +1,26 @@
+---
+title: Programa de Obra
+description: Gantt semanal CARSO · ruta /programa-obra
+---
+
+## Qué muestra
+
+`/programa-obra` es el **Gantt semanal** que CARSO usa para planificar carga de trabajo por zona y técnico. Cada barra es un compromiso de instalaciones / migraciones por semana ISO.
+
+## Vista
+
+- **Filas**: técnicos agrupados por zona (Norte, Sur, etc.)
+- **Columnas**: semanas (ISO) — usualmente 6-8 semanas hacia adelante
+- **Barras**: compromiso de altas o migraciones para esa semana × técnico
+- **Indicadores**: % avance vs comprometido, sobre/sub-asignación
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver | admin, **operaciones** |
+| Editar compromisos | admin, operaciones |
+
+<Callout kind="info">
+  Este módulo es de planeación. No genera OS automáticamente — sólo es el plan. Las OS reales se capturan desde `/os/nueva` cuando el técnico ya hizo el servicio.
+</Callout>

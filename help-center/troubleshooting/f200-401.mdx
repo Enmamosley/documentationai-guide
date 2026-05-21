@@ -1,0 +1,65 @@
+---
+title: F200 devuelve 401 o 403
+description: La descarga del F200 falla con error de auth.
+---
+
+## Síntomas
+
+| Código | Mensaje |
+|---|---|
+| **401** | `No autenticado` |
+| **403** | `Sin permiso para generar F200` |
+
+## 401 — sin sesión
+
+Causas:
+
+- La cookie de Supabase expiró y el middleware no la refrescó (raro).
+- Estás llamando al endpoint desde curl sin pasar la cookie.
+- El navegador no envía cookies (modo incógnito con bloqueo agresivo).
+
+**Fix**: re-loguéate en `/login` y vuelvé a intentar.
+
+Si llamás desde curl:
+
+```bash
+# Exportar cookie del navegador (ej. Chrome DevTools → Application → Cookies)
+curl https://wcg-app-v2.vercel.app/api/f200?periodo=2026-05-W19 \
+  -H "Cookie: sb-lvqqzpabnmdkamxgxrob-auth-token=<valor>" \
+  -o F200.xlsx
+```
+
+## 403 — rol sin permiso
+
+Sólo `admin`, `operaciones` y `contable` pueden generar F200. Si tu rol es:
+
+- **almacenista** → no autorizado (F200 no es tu trabajo)
+- **tecnico** → no autorizado (tu vista es /emu, no F200 agregado)
+
+**Fix**: pedile a admin que te cambie el rol (si corresponde) desde `/sistema`.
+
+## Verificar el gate
+
+El gate vive en `src/app/api/f200/route.ts`:
+
+```typescript
+const session = await fetchSessionUser();
+if (!session) return new NextResponse('No autenticado', { status: 401 });
+
+const rol = session.profile.rol;
+if (rol !== 'admin' && rol !== 'operaciones' && rol !== 'contable') {
+  return new NextResponse('Sin permiso para generar F200', { status: 403 });
+}
+```
+
+Esto es **defensa en profundidad** — el sidebar ya filtra `/f200` para esos roles via `canView.f200(rol)`. El 403 sólo aparece si alguien llama directo al endpoint.
+
+## ¿Por qué hay 0 filas en el F200?
+
+Distinto problema, no es 401/403. El F200 sólo incluye OS en estados:
+
+- `Liquidada`
+- `Facturada`
+- `Pagada`
+
+Si todas las OS del periodo están en `Capturada`, el archivo se descarga pero sólo tiene el header y la fila de totales (en 0). Liquidá las OS antes de generar el reporte.

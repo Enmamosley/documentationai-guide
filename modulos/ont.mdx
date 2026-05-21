@@ -1,0 +1,78 @@
+---
+title: ONTs
+description: Ciclo de vida del equipo terminal · rutas /ont, /ont/[id], /ont/lote
+---
+
+## Qué es una ONT
+
+La **ONT** (Optical Network Terminal) es el modem de fibra que se instala en casa del cliente. Cada ONT tiene un **alfanumérico** único (PK) y un número de **serie**. CARSO surte el equipo; WCG lo asigna a un técnico, lo instala y lo liquida.
+
+## Pantallas
+
+<Columns cols={3}>
+  <Card title="/ont" icon="list">
+    Listado por alfanumérico con filtros por estado, modelo (Huawei/Arcadyan), almacén y técnico.
+  </Card>
+  <Card title="/ont/[id]" icon="router">
+    Detalle con timeline completo: Almacén → Técnico → Liquidación → Facturación.
+  </Card>
+  <Card title="/ont/lote" icon="layers">
+    Captura masiva de ONT cuando llega un lote de CARSO.
+  </Card>
+</Columns>
+
+## Ciclo de vida
+
+```
+En almacén  →  Con técnico  →  Liquidada  →  Facturada
+                     ↓
+                  Dañada
+```
+
+<Steps>
+  <Step title="En almacén" icon="package" title-type="p">
+    Recién recibida vía remisión de CARSO. Vive en un almacén físico (ALM-VC, etc.).
+  </Step>
+  <Step title="Con técnico" icon="hard-hat" title-type="p">
+    Asignada a un técnico para llevar a campo. El almacenista hace la asignación con `asignarONTAction`.
+  </Step>
+  <Step title="Liquidada" icon="check-circle" title-type="p">
+    Instalada en casa del cliente, ligada a la OS (`osVinculada`). El técnico ejecuta `liquidarONTAction`.
+  </Step>
+  <Step title="Facturada" icon="file-text" title-type="p">
+    Incluida en un CFDI a CARSO; se enlaza `facturaVinculada`.
+  </Step>
+  <Step title="Dañada" icon="alert-triangle" title-type="p">
+    Si el equipo falla, `marcarONTDanadaAction` la saca del flujo y deja constancia para reclamo a CARSO.
+  </Step>
+</Steps>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Asignar ONT a técnico | admin, almacenista, operaciones |
+| Liquidar ONT (vincular a OS) | admin, almacenista, operaciones, **técnico** |
+| Marcar dañada | admin, almacenista, operaciones, técnico |
+| Lote de captura masiva | admin, almacenista |
+
+<Callout kind="info">
+  El técnico ve sólo las ONTs **asignadas a él** (`tecnico_id = auth.uid()` via RLS). No puede asignar ONTs entre técnicos.
+</Callout>
+
+## Modelos soportados
+
+- **Huawei**: catálogo de equipo estándar Telmex.
+- **Arcadyan**: catálogo alterno usado en migraciones de cobre.
+
+El modelo afecta el catálogo de equipo asociado, **no** el factor de material de la OS.
+
+## Server Actions
+
+```
+src/lib/actions/onts.ts
+  asignarONTAction(alfanumerico, tecnicoId)
+  liquidarONTAction(alfanumerico, osId)
+  marcarONTDanadaAction(alfanumerico, motivo)
+  capturarLoteAction(rows: ONTLoteInput[])     # lote masivo
+```

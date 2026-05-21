@@ -1,0 +1,44 @@
+---
+title: Reportes
+description: Métrica corporativa y exports CSV · ruta /reportes
+---
+
+## Qué contiene
+
+`/reportes` agrupa reportes operativos y financieros que no son ni F200 ni EMU. Sirven para auditoría interna y para subir a sistemas externos de CARSO.
+
+## Reportes disponibles
+
+<Columns cols={2}>
+  <Card title="OS por técnico" icon="users">
+    OS liquidadas en el periodo, agrupadas por técnico. Export CSV.
+  </Card>
+  <Card title="Consumo de material" icon="package">
+    SKU × cantidad consumida en el periodo, con costo total. Export CSV.
+  </Card>
+  <Card title="ONTs en circulación" icon="router">
+    Inventario de ONT por estado y técnico. Export CSV.
+  </Card>
+  <Card title="Conciliación EMU vs Facturas" icon="calendar">
+    Cruce de filas EMU contra facturas emitidas. Identifica gaps de cobranza.
+  </Card>
+</Columns>
+
+## Exports CSV
+
+Todos los reportes tienen botón "Exportar CSV" que usa `src/lib/csv.ts` para generar el archivo. El CSV se descarga directo desde el navegador (Blob).
+
+<Callout kind="tip">
+  Los CSVs usan `;` como separador y encoding UTF-8 con BOM, para abrir limpio en Excel ES.
+</Callout>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver `/reportes` | todos excepto **técnico** |
+| Exportar CSV | mismos roles |
+
+<Callout kind="info">
+  El técnico no ve `/reportes` — sus métricas las consulta desde `/inicio` (vista filtrada a lo suyo) y `/emu` (sus filas de cobranza).
+</Callout>

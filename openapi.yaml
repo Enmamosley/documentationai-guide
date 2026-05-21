@@ -1,192 +1,240 @@
-openapi: '3.0.0'
+openapi: '3.0.3'
 info:
-  version: 1.0.0
-  title: Sample API
-  description: >
-    This is a sample OpenAPI file included with the starter kit.
+  version: '1.0.0'
+  title: WCG App — API interna
+  description: |
+    Endpoints HTTP de WCG App. La auth es **cookie-based** (sesión Supabase),
+    no Bearer token. Todos los endpoints requieren estar logueado en
+    `/login` desde el navegador — no son APIs públicas.
 
-    Replace this entire file with your own OpenAPI specification that fully
-    describes your API, including your endpoints, schemas, authentication,
-    and error handling. Use this sample only as a structural reference, not
-    as a starting point for a production API definition.
+    Casi todos los endpoints generan **descargas** (PDF / XLSX) con
+    `Content-Disposition: attachment`. Las mutaciones de datos pasan por
+    Server Actions, no por estos endpoints.
   license:
-    name: MIT
+    name: 'Interno WCG'
 servers:
-  - url: https://api.example.com/v1
+  - url: 'https://wcg-app-v2.vercel.app'
+    description: Producción
+  - url: 'http://localhost:3000'
+    description: Local
 paths:
-  /projects:
+  /api/f200:
     get:
-      summary: List all projects
-      operationId: listProjects
+      summary: Generar F200 (.xlsx)
+      description: |
+        Genera el reporte semanal F200 que WCG sube al portal Telmex.
+        Incluye OS en estado Liquidada, Facturada o Pagada.
+
+        Formato Telmex v2.4: 11 columnas, header congelado, totales al pie.
+        Hard cap de 200 filas por archivo.
+
+        Permisos: `admin`, `operaciones`, `contable`.
+      operationId: generateF200
+      tags: [Reportes]
       parameters:
-        - name: limit
+        - name: periodo
           in: query
-          description: How many items to return at one time (max 100)
+          description: 'Periodo semana ISO, ej. `2026-05-W19`. Va en el nombre del archivo.'
           required: false
           schema:
-            type: integer
-            format: int32
+            type: string
+            example: '2026-05-W19'
+        - name: tecnico
+          in: query
+          description: 'ID del técnico (ej. `T-014`) o `all` para todos.'
+          required: false
+          schema:
+            type: string
+            default: 'all'
+        - name: tipo
+          in: query
+          description: 'Tipo de servicio o `all`.'
+          required: false
+          schema:
+            type: string
+            default: 'all'
       responses:
-        200:
-          description: An paged array of projects
+        '200':
+          description: XLSX generado
           headers:
-            x-next:
-              description: A link to the next page of responses
+            Content-Disposition:
               schema:
                 type: string
+                example: 'attachment; filename="F200_2026-05-W19.xlsx"'
           content:
-            application/json:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
               schema:
-                $ref: '#/components/schemas/Projects'
-        default:
-          description: unexpected error
+                type: string
+                format: binary
+        '401':
+          description: Sin sesión válida
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: '#/components/schemas/Error'
-    post:
-      summary: Create project
-      operationId: createProjects
-      responses:
-        201:
-          description: Null response
-        default:
-          description: unexpected error
+                type: string
+                example: 'No autenticado'
+        '403':
+          description: Rol sin permiso para F200
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: '#/components/schemas/Error'
-  /projects/{projectId}:
+                type: string
+                example: 'Sin permiso para generar F200'
+  /api/os/{id}/r20:
     get:
-      summary: Get project info
-      operationId: showProjectById
+      summary: Generar formato R20 (PDF)
+      description: |
+        PDF imprimible del formato R20 con los datos capturados de la OS.
+        Útil para entregar al cliente o archivar físicamente.
+
+        Permisos: admin, operaciones, técnico (sólo la suya via RLS).
+      operationId: generateR20PDF
+      tags: [OS]
       parameters:
-        - name: projectId
+        - name: id
+          in: path
+          description: UUID de la OS
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: PDF generado
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="R20_<folio>.pdf"'
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Sin sesión
+        '403':
+          description: Sin permiso (RLS)
+        '404':
+          description: OS no existe
+  /api/remisiones/{numero}/vale:
+    get:
+      summary: Generar vale interno de remisión (PDF)
+      description: |
+        PDF del vale interno con los SKUs recibidos en una remisión CARSO.
+        Se usa como respaldo físico en el almacén.
+
+        Permisos: admin, almacenista.
+      operationId: generateValeRemision
+      tags: [Remisiones]
+      parameters:
+        - name: numero
+          in: path
+          description: Número de remisión CARSO
+          required: true
+          schema:
+            type: string
+            example: 'REM-2026-001234'
+      responses:
+        '200':
+          description: PDF generado
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Sin sesión
+        '403':
+          description: Sin permiso
+        '404':
+          description: Remisión no existe
+  /api/tecnicos/{id}/credencial:
+    get:
+      summary: Credencial imprimible del técnico (PDF)
+      description: |
+        PDF tipo tarjeta con foto + alias + zona. Para imprimir y plastificar.
+
+        Permisos: admin.
+      operationId: generateCredencialTecnico
+      tags: [Técnicos]
+      parameters:
+        - name: id
+          in: path
+          description: 'ID del técnico (ej. `T-014`)'
+          required: true
+          schema:
+            type: string
+            example: 'T-014'
+      responses:
+        '200':
+          description: PDF generado
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Sin sesión
+        '403':
+          description: Sin permiso (sólo admin)
+        '404':
+          description: Técnico no existe
+  /api/tecnicos/{id}/ficha:
+    get:
+      summary: Ficha técnica completa (PDF)
+      description: |
+        PDF con el expediente completo del técnico (datos personales,
+        PII fiscal, herramienta, vehículo). Para auditoría o reclutamiento.
+
+        Permisos: admin.
+      operationId: generateFichaTecnico
+      tags: [Técnicos]
+      parameters:
+        - name: id
           in: path
           required: true
-          description: The id of the project to retrieve
           schema:
             type: string
       responses:
-        200:
-          description: Expected response to a valid request
+        '200':
+          description: PDF generado
           content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Projects'
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /documents:
-    get:
-      summary: List all documents
-      operationId: listDocuments
-      parameters:
-        - name: limit
-          in: query
-          description: How many items to return at one time (max 100)
-          required: false
-          schema:
-            type: integer
-            format: int32
-      responses:
-        200:
-          description: An paged array of documents
-          headers:
-            x-next:
-              description: A link to the next page of responses
+            application/pdf:
               schema:
                 type: string
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Documents'
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    post:
-      summary: Create document
-      operationId: createDocuments
-      responses:
-        201:
-          description: Null response
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /documents/{docId}:
-    get:
-      summary: Get document info
-      operationId: showDocumentById
-      parameters:
-        - name: docId
-          in: path
-          required: true
-          description: The id of the document to retrieve
-          schema:
-            type: string
-      responses:
-        200:
-          description: Expected response to a valid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Documents'
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+                format: binary
+        '401':
+          description: Sin sesión
+        '403':
+          description: Sin permiso (sólo admin)
+        '404':
+          description: Técnico no existe
 components:
   schemas:
-    Project:
-      required:
-        - id
-        - name
-      properties:
-        id:
-          type: integer
-          format: int64
-        name:
-          type: string
-        description:
-          type: string
-    Projects:
-      type: array
-      items:
-        $ref: '#/components/schemas/Project'
-    Document:
-      required:
-        - id
-        - title
-      properties:
-        id:
-          type: integer
-          format: int64
-        title:
-          type: string
-        content:
-          type: string
-    Documents:
-      type: array
-      items:
-        $ref: '#/components/schemas/Document'
     Error:
-      required:
-        - code
-        - message
+      type: object
+      required: [message]
       properties:
-        code:
-          type: integer
-          format: int32
         message:
           type: string
+          example: 'No autenticado'
+        codigo_pg:
+          type: string
+          description: |
+            Código de error Postgres si aplica:
+            - `42501` RLS violation
+            - `23514` constraint (stock insuficiente)
+            - `23505` duplicate key
+            - `23503` FK violation
+          example: '42501'
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: 'sb-<project>-auth-token'
+      description: |
+        Cookie HTTP-only emitida por Supabase tras login en `/login`.
+        Se refresca en cada request via `middleware.ts`.
+security:
+  - cookieAuth: []

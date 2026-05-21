@@ -1,57 +1,107 @@
 ---
-title: Authentication (Sample)
-description: Sample guidance for authentication and OpenAPI usage.
+title: Autenticación
+description: Cómo se autentican los endpoints HTTP de WCG App.
 ---
 
-## Overview
+## Modelo de auth
 
-This is sample content. Replace tokens, URLs, headers, and flows with your real authentication requirements.
+WCG App **no expone una API pública** con tokens. Toda la autenticación pasa por la **sesión de Supabase** establecida en `/login`, que se materializa como **cookies HTTP-only** firmadas. Los endpoints en `/api/*` validan esa sesión leyendo las cookies con `getSupabaseServer()`.
 
-<Callout kind="info">
-
-This site ships with placeholder content for authentication. Update this page and `openapi.yaml` to match your real API before sharing with users.
-
+<Callout kind="info" collapsed="false">
+  No hay `Authorization: Bearer …`. No hay API keys de usuario. La única forma de tocar `/api/*` es estar logueado en el navegador.
 </Callout>
 
-This API uses OpenAPI to describe endpoints, parameters, and responses. The reference is generated from `openapi.yaml`, so keep that file up to date as your API evolves.
+## Flujo
 
-## Authentication
+<Steps>
+  <Step title="Login" icon="lock" title-type="p">
+    POST a `/login` con email + password vía la action `loginAction`. Supabase responde con `Set-Cookie` de la sesión.
+  </Step>
+  <Step title="Middleware refresca tokens" icon="refresh-cw" title-type="p">
+    `middleware.ts` corre en cada request. Lee cookies, refresca el JWT si está por expirar, y lo escribe de vuelta.
+  </Step>
+  <Step title="Endpoint lee sesión" icon="server" title-type="p">
+    El handler en `/api/*` llama `await fetchSessionUser()` (que internamente usa `getSupabaseServer()`). Si no hay user → 401. Si el rol no aplica → 403.
+  </Step>
+  <Step title="Postgres aplica RLS" icon="shield" title-type="p">
+    Cualquier query del handler viaja con el JWT del usuario. RLS evalúa contra `current_user_role()`.
+  </Step>
+</Steps>
 
-Use a bearer token in the `Authorization` header for authenticated requests. Replace the base URL and token with values for your own API.
+## Ejemplo: descarga F200
 
 ```bash
-curl https://api.example.com/v1/example \
-  -H "Authorization: Bearer YOUR_TOKEN"
+# Asumiendo que la cookie de sesión ya está en ~/.cookies.txt:
+curl https://wcg-app-v2.vercel.app/api/f200?periodo=2026-05-W19 \
+  -b ~/.cookies.txt \
+  -o F200_2026-05-W19.xlsx
 ```
 
-<ParamField header="Authorization" param-type="string" required="true">
-  `Bearer YOUR_TOKEN`
-</ParamField>
+Si no hay cookie válida:
 
-## Keep OpenAPI in sync
+```
+HTTP/2 401
+content-type: text/plain
 
-Define your authentication and base settings in `openapi.yaml` so the API Reference stays accurate and consistent.
+No autenticado
+```
 
-At a minimum, you should:
+Si la cookie es válida pero el rol no tiene permiso:
 
-- Define one or more security schemes that describe how clients authenticate (for example, bearer token, API key in a header, or other scheme).
-- Reference those security schemes on operations that require authentication so they are clearly marked as secured.
-- Set the correct base URL and any required global headers (for example, versioning or tenant headers) so example requests are copy-pasteable.
+```
+HTTP/2 403
+content-type: text/plain
 
-When your real authentication flow changes (for example, new header names, token formats, or additional requirements), update `openapi.yaml`. The generated API Reference will then reflect your current auth model without needing to edit each endpoint page by hand.
+Sin permiso para generar F200
+```
 
-## Using the API reference
+## Rutas públicas (sin auth)
 
-Use the API Reference to explore endpoints, required parameters, and example responses. When you change authentication headers or base URLs, update `openapi.yaml` so the generated reference matches what your clients should use.
+| Path | Notas |
+|---|---|
+| `/login` | Página de login |
+| `/auth/callback` | Callback OAuth de Supabase |
 
-## Common mistakes
+Todo lo demás (incluyendo `/api/*`) requiere sesión. El matcher del middleware está en:
 
-<Expandable title="Why am I getting a 401?" default-open="false">
+```typescript
+// middleware.ts
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)']
+};
+```
 
-Verify that:
+## Validación por rol en endpoints
 
-- The token is valid and not expired.
-- The token is sent in the `Authorization` header.
-- The header value includes the `Bearer` prefix and a space before the token.
+Cada handler implementa su gate. Ejemplo de `/api/f200`:
 
-</Expandable>
+```typescript
+const session = await fetchSessionUser();
+if (!session) return new NextResponse('No autenticado', { status: 401 });
+
+const rol = session.profile.rol;
+if (rol !== 'admin' && rol !== 'operaciones' && rol !== 'contable') {
+  return new NextResponse('Sin permiso para generar F200', { status: 403 });
+}
+```
+
+Esto duplica intencionalmente la gate del cliente (`canView.f200(rol)`) para defensa en profundidad.
+
+## Cómo crear un usuario nuevo
+
+<Callout kind="alert">
+  El flujo de signup público está deshabilitado de facto — sólo admin puede crear usuarios desde `/sistema`. Esto cierra Bug 4 (escalation de rol via signup).
+</Callout>
+
+Ver la guía: [Crear un usuario nuevo](/help-center/guides/crear-usuario)
+
+## ¿Por qué no JWT API?
+
+WCG App está pensada como herramienta interna. Si en el futuro hay que exponer integraciones (CARSO, Telmex), se agregará un esquema separado con:
+
+- API keys por integración (no por usuario)
+- Scopes mínimos
+- Rate limiting
+- Logging dedicado
+
+Por ahora ese esquema **no existe**.

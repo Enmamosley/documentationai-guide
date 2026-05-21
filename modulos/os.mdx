@@ -1,0 +1,84 @@
+---
+title: Órdenes de Servicio (OS)
+description: Captura R20, listado, detalle y liquidación · rutas /os, /os/nueva, /os/[id]
+---
+
+## Qué es una OS
+
+La **Orden de Servicio** es la unidad de trabajo. Cada OS representa un servicio que Telmex pide vía SIATEL (instalación nueva, migración, reparación) y que WCG ejecuta en campo.
+
+<Callout kind="info">
+  WCG **no** tiene acceso al SIATEL de Telmex. La OS se captura en la app **después** de hacer el servicio, con el folio SIATEL como referencia.
+</Callout>
+
+## Pantallas
+
+<Columns cols={3}>
+  <Card title="/os" icon="list">
+    Listado con tabs por estado (Capturada · Liquidada · Facturada · Pagada · Cancelada) y filtros por técnico, fecha y tipo.
+  </Card>
+  <Card title="/os/nueva" icon="plus">
+    Captura R20 en 4 pasos. Sugiere material según el factor Telmex del tipo de servicio.
+  </Card>
+  <Card title="/os/[id]" icon="file-text">
+    Detalle con tabs: General · Material · ONTs · Historial · Documentos.
+  </Card>
+</Columns>
+
+## Captura en 4 pasos (`/os/nueva`)
+
+<Steps>
+  <Step title="1. Cliente y dirección" icon="user" title-type="p">
+    Nombre, teléfono, calle/colonia/alcaldía, CP. Folio SIATEL de Telmex (obligatorio).
+  </Step>
+  <Step title="2. Tipo de servicio" icon="tag" title-type="p">
+    Alta FTTH, Migración FTTH o Migración FTTH vieja. Esto define qué factor se usa para sugerir material.
+  </Step>
+  <Step title="3. R20 técnico" icon="activity" title-type="p">
+    Mediciones (potencia óptica, distrito, terminal, alfanumérico de poste), tipo de instalación (aérea/subterránea), metraje, upsell Infinitum (Claro Video, WiFi, velocidad adicional).
+  </Step>
+  <Step title="4. Material consumido" icon="package" title-type="p">
+    Lista pre-rellenada con sugerencias del factor; el técnico ajusta cantidades reales. Al guardar, el material se descuenta de su mochila atómicamente.
+  </Step>
+</Steps>
+
+## Flujo de estados
+
+```
+Capturada → Liquidada → Facturada → Pagada
+                ↓
+            Cancelada
+```
+
+- **Capturada**: existe en BD con el R20, pero el material aún no se ha consumido.
+- **Liquidada** (`liquidarOSAction`): consume el material del kit del técnico via trigger SQL atómico. La OS aparece en el F200.
+- **Facturada**: se incluye en un CFDI emitido a CARSO.
+- **Pagada**: CARSO depositó (se actualiza desde el módulo de Facturas).
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Capturar OS nueva | admin, operaciones, **técnico** |
+| Liquidar OS | admin, operaciones, técnico (sólo las suyas via RLS) |
+| Editar mediciones R20 | admin, operaciones, técnico (sólo las suyas) |
+| Editar notas técnico | admin, técnico (sólo las suyas) |
+| Cancelar | admin, operaciones |
+
+<Callout kind="alert">
+  El rol **técnico** es auto-servicio. Ve sólo SUS OS, captura con su mochila, liquida lo suyo. RLS filtra `auth.uid()` contra `tecnico.user_id`.
+</Callout>
+
+## Server Actions
+
+```
+src/lib/actions/os.ts
+  createOSAction(data: OSCreateInput)         # paso 1-4 → INSERT
+  liquidarOSAction(osId)                      # → trigger consume mochila
+  cancelarOSAction(osId, motivo)
+  agregarPartidaAction(osId, sku, qty)        # ajustar material a posteriori
+```
+
+## R20 PDF
+
+`GET /api/os/[id]/r20` genera el PDF imprimible del formato R20 con los datos capturados. Útil para entregar al cliente o archivar físicamente.

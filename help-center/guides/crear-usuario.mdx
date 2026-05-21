@@ -1,0 +1,64 @@
+---
+title: Crear un usuario nuevo
+description: Sólo admin puede hacerlo. Aquí cómo y por qué.
+---
+
+## Por qué sólo admin
+
+El signup público fue cerrado en el commit `6436986` (Bug 4). Antes un usuario podía signup y elegir su `rol` desde el cliente → escalation a admin trivial. Ahora:
+
+- El endpoint de signup ignora cualquier `rol` enviado por el cliente.
+- El self-update de `user_profiles` no permite cambiar `rol` (trigger BEFORE UPDATE lo aborta).
+- **Sólo admin** crea usuarios y asigna rol, desde `/sistema`.
+
+## Pasos
+
+<Steps>
+  <Step title="Login como admin" icon="lock" title-type="p">
+    `admin@splanding.dev` / `wcg-admin-2026` (o tu cuenta admin propia).
+  </Step>
+
+  <Step title="Ir a /sistema" icon="settings" title-type="p">
+    En el sidebar, sección Sistema → Usuarios.
+  </Step>
+
+  <Step title="Crear usuario" icon="user-plus" title-type="p">
+    Click "Nuevo usuario". Llenar:
+    - Email
+    - Password inicial (el usuario debe cambiarla)
+    - Rol (admin / operaciones / almacenista / contable / tecnico)
+  </Step>
+
+  <Step title="Asignar técnico (si rol = tecnico)" icon="link" title-type="p">
+    Si el rol es `tecnico`, hay que ligar el `user_id` al `tecnico_id` en la tabla `tecnicos` para que RLS filtre correctamente. La UI tiene un dropdown del padrón de técnicos.
+
+    Sin este link, el técnico no ve ninguna OS / ONT al loguearse.
+  </Step>
+
+  <Step title="Enviar credenciales" icon="mail" title-type="p">
+    Compartir email + password inicial al usuario por canal seguro. La app no envía emails automáticamente (todavía).
+  </Step>
+</Steps>
+
+## Server Action que se usa
+
+```typescript
+// src/lib/actions/users.ts
+crearUsuarioAction(email, password, rol)
+```
+
+La action usa `supabase.auth.admin.createUser()` (que requiere service key — vive sólo en el servidor) seguido de un INSERT en `user_profiles` con el rol asignado.
+
+<Callout kind="info">
+  Si necesitás cambiar el rol de alguien ya existente, usar `actualizarRolAction(userId, nuevoRol)` desde la misma pantalla. Sólo admin (gateado por RLS).
+</Callout>
+
+## Soft-delete
+
+Para "borrar" un usuario:
+
+```typescript
+desactivarUsuarioAction(userId)
+```
+
+Esto marca el perfil como inactivo. El usuario sigue en `auth.users` (no se borra para mantener auditoría), pero no autentica contra `current_user_role()`.

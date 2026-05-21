@@ -1,22 +1,61 @@
 ---
-title: Sample Changelog
-description: Sample release notes you can replace with your real updates.
+title: Changelog
+description: Cambios relevantes de WCG App.
 ---
 
-## Sample updates
+## Cambios recientes
 
-<Callout kind="alert">
-This changelog is example content. Replace every entry with your real releases.
-</Callout>
-
-<Update label="2026-01-26" description="Sample Update" tags={["sample"]}>
-## What changed
-- Cleaned up placeholder copy across the starter kit.
-- Added clearer "sample" messaging to avoid confusion.
+<Update label="2026-05-20" description="Endurecimiento y atomicidad" tags={["seguridad", "stock", "auditoría"]}>
+## Bloque medio
+- `f005cb6` — EMU pagada-parcial · folio race · `createOS` atómico.
+- `6436986` — **Bug 4 cerrado**: signup ya no acepta `rol`, self-update bloquea cambio de rol, sólo admin puede modificar roles (UI nueva en /sistema).
+- `cbd22f3` — Fix de stock duplicado: guards en `inventory` + auto-consumo al liquidar OS.
+- `822116d` — Gates de auth en `/api/*`, scope técnico en ONT/EMU (filtros RLS), upserts atómicos.
+- `11c0440` — Activación de botones muertos: R20 PDF, lote ONT, CSV exports, agregar partida.
+- `1d8d74c` — Auditoría post-sesión: cierre de bugs de stock + flujo remisiones.
+- `03369a6` — Registrar remisión funcional: CARSO → almacén con incremento atómico.
+- `b4d64fe` — Técnico crea su OS; consumo descuenta mochila automáticamente.
 </Update>
 
-<Update label="2025-12-10" description="Sample Update" tags={["sample"]}>
-## What changed
-- Simplified the Quickstart steps.
-- Trimmed Help Center examples.
+<Update label="2026-05-19" description="Repo de documentos, FIBRA.NET, CFDI 4.0" tags={["fase-6", "fase-5", "cfdi"]}>
+## Fase 6 — pulido FIBRA.NET
+- `aa3a289` — Auditoría /tecnicos: quitar auto-print (causaba bloqueo).
+- `8b988ef` — Surtir kit semanal a técnico + stock en vivo por mochila.
+- `85407f1` — Repo de documentos: cierre completo de Fase 6.
+- `f9f569c` — Pulido FIBRA.NET: empresa, unidades, devolución, traspaso.
+
+## Fase 5A — CFDI
+- `f7056bd` — Adjuntar XML+PDF de CFDIs emitidos + parser CFDI 4.0 (`src/lib/cfdi-parser.ts`).
+- `e61021c` — Credencial imprimible + ficha técnica exportable para `/tecnicos/[id]`.
+</Update>
+
+<Update label="2026-05-18" description="Expediente técnico, programa de obra, R20 completo" tags={["fase-4", "fase-3"]}>
+## Fase 4
+- `366aef6` — Expediente técnico + programa de obra + catálogos auxiliares.
+- `1dda4c5` — Retro del cliente: EMU detallado, remisiones por semana, deltas más claros.
+
+## Fase 3
+- `13043d2` — Campos R20 + RTF de producción (potencia óptica, alfanumérico de poste, etc.).
+</Update>
+
+<Update label="2026-05-15" description="MVP base, EMU operativo, rol técnico, RLS" tags={["mvp", "fase-1", "fase-2", "auditoría"]}>
+## Fase 2
+- `8c35fde` — EMU operativo (técnico × semana + cobranza).
+- `11f3884` — Visibilidad por rol: sidebar filtrado + guard server-side.
+- `7f40cad` — Rol técnico: auto-servicio para liquidar y reportar consumo.
+
+## Fase 1
+- `4081a29` — Cobranza por lote + vale FR-PM-12 + factor histórico.
+- `9a7e313` — Auditoría completa: hardcodes, modelo viejo, defensa en profundidad.
+- `cb51932` — Refactor: **CARSO envía material vía remisiones**, no vía compras (saca el flujo de "facturas recibidas").
+- `3495b6b` — Importar EMU y RELACION FACTURAS reales.
+- `58e69dd` — Role-based UI gating + 4 usuarios sembrados.
+
+## Otros
+- `eec59b6` — Modelo de tres cantidades: SOLICITADO / ENTREGADO / CONSUMIDO.
+- `77bbb89` — Edición inline de entregada y consumida en OS detail.
+- `5bb7515` — Reporte de deltas cross-OS (merma y sobrante).
+- `2a9b550` / `d0da2cb` — Login mágico: botones por rol para demo.
+- `5495067` — Add `siatel` / `factor_*_ftth` columns en `skus`.
+- `c91f079` — **Initial commit**: MVP completo (9 pantallas desde Supabase con auth y RLS).
 </Update>

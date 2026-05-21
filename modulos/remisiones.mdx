@@ -1,0 +1,65 @@
+---
+title: Remisiones (CARSO → WCG)
+description: Material que CARSO envía a WCG · rutas /remisiones, /remisiones/nueva, /remisiones/[numero]
+---
+
+## Qué es una remisión
+
+CARSO surte el material que WCG necesita para operar. Cada envío llega con un **número de remisión** y un detalle de SKU + cantidad. WCG la recibe físicamente, verifica contra el documento y la **confirma** — eso incrementa el stock del almacén destino atómicamente.
+
+<Callout kind="info" collapsed="false">
+  **WCG no compra material externo.** Todo el equipo viene por remisión de CARSO. Por eso no existe el módulo de "facturas recibidas" (eso aplicaba al diseño original; se descartó en el refactor `refactor_remisiones_carso`).
+</Callout>
+
+## Pantallas
+
+<Columns cols={3}>
+  <Card title="/remisiones" icon="list">
+    Listado con tabs por estado: En tránsito · Recibida · Confirmada.
+  </Card>
+  <Card title="/remisiones/nueva" icon="plus">
+    Registrar manualmente una remisión nueva (formato CARSO).
+  </Card>
+  <Card title="/remisiones/[numero]" icon="file-text">
+    Detalle con partidas, recepción y vale imprimible.
+  </Card>
+</Columns>
+
+## Flujo
+
+```
+En tránsito  →  Recibida  →  Confirmada
+```
+
+<Steps>
+  <Step title="Registrar" icon="plus" title-type="p">
+    El almacenista crea la remisión con el detalle del documento CARSO antes o cuando llega el camión.
+  </Step>
+  <Step title="Recibir" icon="package" title-type="p">
+    Confirma físicamente que la cantidad coincide. Marca como "Recibida".
+  </Step>
+  <Step title="Confirmar" icon="check-circle" title-type="p">
+    Cierra el ciclo: incrementa stock atómicamente en el almacén destino. Genera un vale interno imprimible.
+  </Step>
+</Steps>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Registrar remisión | admin, almacenista, operaciones |
+| Recibir | admin, **almacenista** |
+| Confirmar | admin, **almacenista** |
+
+## Vale imprimible
+
+`GET /api/remisiones/[numero]/vale` genera el vale interno en PDF con los SKUs recibidos. Se usa como respaldo físico en el almacén.
+
+## Server Actions
+
+```
+src/lib/actions/remisiones.ts
+  crearRemisionAction(numero, almacenDestino, items[])
+  recibirRemisionAction(numero)
+  confirmarRemisionAction(numero)      # ← incrementa stock atómicamente
+```

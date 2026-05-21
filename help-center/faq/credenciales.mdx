@@ -1,0 +1,36 @@
+---
+title: Credenciales y acceso
+description: Cómo entrar a la app demo y dónde están las credenciales.
+---
+
+## Cuenta admin de demo
+
+- **URL**: https://wcg-app-v2.vercel.app
+- **Email**: `admin@splanding.dev`
+- **Password**: `wcg-admin-2026`
+- **Rol**: admin (ve todo)
+
+<Callout kind="alert">
+  Esta cuenta es **sólo para demos**. No la uses para datos reales — está documentada públicamente y el rol admin puede tocar PII y roles de otros usuarios.
+</Callout>
+
+## Otros roles para demo
+
+Si querés probar la app con distintos roles, créalos desde `/sistema` → Usuarios. El admin puede asignar cualquiera de:
+
+- `admin` — acceso total
+- `almacenista` — recibe remisiones, surte kits
+- `operaciones` — captura OS, asigna ONT, programa de obra
+- `contable` — facturas emitidas y EMU
+- `tecnico` — auto-servicio, ve sólo sus OS / ONTs / EMU
+
+## Dónde están las credenciales de Supabase
+
+Las claves públicas (URL + anon key) están en `.env.example` del repo. Son seguras de exponer — la seguridad real vive en las policies RLS de Postgres.
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://lvqqzpabnmdkamxgxrob.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJhbGc...
+```
+
+La **service key** (full access, salta RLS) no está en el repo. Sólo el admin la conoce y no se necesita para correr la app — todas las queries usan la publishable key + cookies de sesión.

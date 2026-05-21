@@ -1,0 +1,97 @@
+---
+title: RLS violation (error 42501)
+description: La mutación falla con "new row violates row-level security policy".
+---
+
+## Síntoma
+
+Al guardar algo (crear OS, liquidar ONT, mover stock), la app muestra un error similar a:
+
+```
+new row violates row-level security policy for table "<tabla>"
+codigo: 42501
+```
+
+O en logs:
+
+```
+error: 42501 — permission denied for relation <tabla>
+```
+
+## Causa
+
+El rol del usuario no tiene policy de INSERT o UPDATE para esa tabla. Posibles razones:
+
+<Steps>
+  <Step title="Rol incorrecto en user_profiles" icon="user-x" title-type="p">
+    Verificá el rol asignado:
+    ```sql
+    SELECT id, email, rol FROM user_profiles WHERE email = '<email>';
+    ```
+
+    Si el rol no está en la matriz de [Roles y RLS](/arquitectura/roles-permisos) para esa acción, ese es el bug.
+  </Step>
+
+  <Step title="Falta link tecnico_id ↔ user_id" icon="link" title-type="p">
+    Si el rol es `tecnico` y la acción es sobre una OS suya, la policy filtra:
+    ```sql
+    EXISTS (SELECT 1 FROM tecnicos
+            WHERE tecnicos.id = os.tecnico_id
+            AND tecnicos.user_id = auth.uid())
+    ```
+
+    Verificá:
+    ```sql
+    SELECT id, nombre, user_id FROM tecnicos WHERE user_id = '<user uuid>';
+    ```
+
+    Si `user_id` es NULL, el técnico no puede mutar nada — actualizá la fila en `tecnicos` con el `user_id` correcto.
+  </Step>
+
+  <Step title="Policy mal escrita" icon="alert-triangle" title-type="p">
+    Revisá la policy real:
+    ```sql
+    SELECT polname, polcmd, polqual::text
+      FROM pg_policy
+      WHERE polrelid = '<tabla>'::regclass;
+    ```
+
+    Compará con lo documentado en [Roles y RLS](/arquitectura/roles-permisos).
+  </Step>
+
+  <Step title="Sesión sin cookies" icon="lock" title-type="p">
+    Si la action se llama desde curl/Postman sin las cookies de Supabase, RLS evalúa con `auth.uid() = NULL` → falla todo. Loguéate primero desde el navegador.
+  </Step>
+</Steps>
+
+## Cómo verificar a mano
+
+```sql
+-- ¿Quién es el usuario actual?
+SELECT auth.uid();
+
+-- ¿Cuál es su rol?
+SELECT current_user_role();
+
+-- ¿Las policies permiten esta tabla?
+SELECT polname, polcmd
+  FROM pg_policy
+  WHERE polrelid = 'os'::regclass
+    AND polcmd IN ('a', 'w');   -- INSERT, UPDATE
+```
+
+## Solución típica
+
+Si el rol está mal, desde admin:
+
+```
+/sistema → Usuarios → editar → cambiar rol → guardar
+```
+
+Si falta el link técnico:
+
+```sql
+UPDATE tecnicos
+  SET user_id = '<user uuid>'
+  WHERE id = 'T-014';
+```

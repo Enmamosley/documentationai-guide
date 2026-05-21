@@ -1,0 +1,65 @@
+---
+title: Sistema
+description: Configuración técnica y administrativa · rutas /sistema, /sistema/empresa, /sistema/documentos
+---
+
+## Para qué sirve
+
+`/sistema` es el panel admin. Concentra configuración de empresa, gestión de usuarios y repositorio de documentos.
+
+## Sub-pantallas
+
+<Columns cols={3}>
+  <Card title="/sistema" icon="settings">
+    Panel raíz: gestión de usuarios (admin/almacenista/operaciones/contable/técnico).
+  </Card>
+  <Card title="/sistema/empresa" icon="building">
+    Datos fiscales de WCG: RFC, razón social, domicilio fiscal, certificados FIBRA.NET.
+  </Card>
+  <Card title="/sistema/documentos" icon="folder">
+    Repositorio centralizado: contratos CARSO, R20s firmados, F200s históricos, expedientes.
+  </Card>
+</Columns>
+
+## Gestión de usuarios
+
+<Steps>
+  <Step title="Crear usuario" icon="user-plus" title-type="p">
+    Email + password inicial + rol. Se inserta en `auth.users` y en `user_profiles` con el rol asignado.
+  </Step>
+  <Step title="Asignar rol" icon="shield" title-type="p">
+    El rol determina qué ve y qué puede mutar via RLS. Cambiar el rol surte efecto en el siguiente request.
+  </Step>
+  <Step title="Desactivar" icon="user-x" title-type="p">
+    Soft-delete del perfil — el usuario sigue en `auth.users` pero ya no autentica contra `current_user_role()`.
+  </Step>
+</Steps>
+
+<Callout kind="alert">
+  Después del bug 4 (commit `6436986`), **un usuario no puede escalar su propio rol**. Sólo admin puede cambiar roles, y el endpoint de signup ya no acepta el campo `rol` desde el cliente.
+</Callout>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver `/sistema` | **admin** |
+| Gestionar usuarios | admin |
+| Editar empresa | admin |
+| Documentos | todos excepto técnico |
+
+## Server Actions
+
+```
+src/lib/actions/users.ts
+  crearUsuarioAction(email, password, rol)
+  actualizarRolAction(userId, nuevoRol)     # admin-only via RLS
+  desactivarUsuarioAction(userId)
+
+src/lib/actions/empresa.ts
+  actualizarEmpresaAction(data)
+
+src/lib/actions/documentos.ts
+  subirDocumentoAction(file, categoria)
+  eliminarDocumentoAction(documentoId)
+```

@@ -1,0 +1,61 @@
+---
+title: Técnicos
+description: Expediente técnico + activos + credencial · rutas /tecnicos, /tecnicos/[id]
+---
+
+## Qué guarda
+
+Por cada técnico, el expediente cumple los requisitos de **REPSE / IMSS**:
+
+- Datos personales: nombre, alias, teléfono, zona
+- PII fiscal: RFC, CURP, IMSS (NSS), INE
+- Activos asignados: herramienta + vehículo
+- Documentos adjuntos: identificación, contrato, etc.
+
+<Callout kind="alert">
+  El expediente es **PII sensible**. Sólo **admin** puede editarlo. El propio técnico ve su perfil pero no puede modificar campos fiscales.
+</Callout>
+
+## Pantallas
+
+<Columns cols={2}>
+  <Card title="/tecnicos" icon="users">
+    Listado de los 6 técnicos activos.
+  </Card>
+  <Card title="/tecnicos/[id]" icon="user">
+    Detalle con tabs: Expediente · Activos · Documentos · Historial OS.
+  </Card>
+</Columns>
+
+## Imprimibles
+
+<Steps>
+  <Step title="Credencial" icon="credit-card" title-type="p">
+    `GET /api/tecnicos/[id]/credencial` — PDF tipo tarjeta con foto + alias + zona, lista para imprimir y plastificar.
+  </Step>
+  <Step title="Ficha técnica" icon="file-text" title-type="p">
+    `GET /api/tecnicos/[id]/ficha` — Hoja completa del expediente para auditoría o reclutamiento.
+  </Step>
+</Steps>
+
+<Callout kind="info">
+  La auto-impresión se quitó después de la auditoría `aa3a289` — causaba bloqueo. Ahora los botones llaman al endpoint y descargan el PDF.
+</Callout>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver listado y detalle | todos excepto **técnico** |
+| Editar expediente (PII) | **admin** |
+| Gestionar herramienta + vehículo | **admin** |
+| Imprimir credencial / ficha | admin |
+
+## Server Actions
+
+```
+src/lib/actions/tecnicos.ts
+  actualizarExpedienteAction(tecnicoId, data)
+  asignarHerramientaAction(tecnicoId, items[])
+  asignarVehiculoAction(tecnicoId, placa, marca, modelo)
+```

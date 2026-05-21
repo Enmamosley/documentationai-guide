@@ -1,0 +1,34 @@
+---
+title: Inicio
+description: Dashboard de KPIs · ruta /
+---
+
+## Para qué sirve
+
+Es la pantalla por default después de login. Resume el estado operativo del día:
+
+- **KPIs**: OS abiertas, ONT en almacén/asignadas, facturas por cobrar, monto en EMU pendiente.
+- **Últimas OS**: las 10 más recientes con técnico, cliente y estado.
+- **Pendientes**: OS que llevan más de N días sin liquidar, ONTs sin asignar, facturas en revisión vencidas.
+
+## Quién la ve
+
+Todos los roles tienen acceso. Los KPIs se adaptan al rol:
+
+- **Técnico**: ve sólo sus propios KPIs (sus OS abiertas, su mochila).
+- **Almacenista**: ve KPIs de inventario y remisiones pendientes.
+- **Contabilidad**: ve KPIs de cobranza (EMU pendiente, facturas por pagar).
+- **Admin / Operaciones**: ve todo agregado.
+
+## Cómo funciona
+
+```
+src/app/(app)/page.tsx       # Server Component: fetchInicioData()
+src/components/screens/InicioClient.tsx   # Client: interactividad de tarjetas
+```
+
+El Server Component llama a `fetchInicioData()` en `src/lib/db.ts`, que hace múltiples queries paralelas a Supabase. El Client recibe los datos como props.
+
+<Callout kind="tip">
+  El cmd palette (`⌘K`) está siempre disponible desde Inicio. Busca por folio (`R20-`), alfanumérico de ONT, serie de factura (`A-`) o RFC.
+</Callout>

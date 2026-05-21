@@ -1,25 +1,25 @@
 {
-  "name": "Starter Kit",
+  "name": "WCG App",
   "colors": {
     "light": {
-      "brand": "#F97316"
+      "brand": "#0F62FE"
     },
     "dark": {
-      "brand": "#FDBA74"
+      "brand": "#78A9FF"
     }
   },
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "Documentación",
         "icon": "book",
         "groups": [
           {
-            "group": "Start Here",
+            "group": "Empezar",
             "icon": "rocket",
             "pages": [
               {
-                "title": "Introduction",
+                "title": "Introducción",
                 "path": "introduction",
                 "icon": "home"
               },
@@ -29,45 +29,111 @@
                 "icon": "zap"
               },
               {
-                "title": "Components",
-                "path": "components",
-                "icon": "code"
+                "title": "Conceptos",
+                "path": "concepts",
+                "icon": "layers"
               }
             ]
           },
           {
-            "group": "Components",
+            "group": "Módulos",
+            "icon": "layout-grid",
+            "pages": [
+              {
+                "title": "Inicio (KPIs)",
+                "path": "modulos/inicio",
+                "icon": "home"
+              },
+              {
+                "title": "Órdenes de Servicio",
+                "path": "modulos/os",
+                "icon": "clipboard-list"
+              },
+              {
+                "title": "ONTs",
+                "path": "modulos/ont",
+                "icon": "router"
+              },
+              {
+                "title": "Almacén",
+                "path": "modulos/almacen",
+                "icon": "package"
+              },
+              {
+                "title": "Remisiones (CARSO)",
+                "path": "modulos/remisiones",
+                "icon": "truck"
+              },
+              {
+                "title": "EMU (cobranza)",
+                "path": "modulos/emu",
+                "icon": "calendar"
+              },
+              {
+                "title": "Facturas emitidas",
+                "path": "modulos/facturas",
+                "icon": "file-text"
+              },
+              {
+                "title": "F200 (Telmex)",
+                "path": "modulos/f200",
+                "icon": "download"
+              },
+              {
+                "title": "Programa de obra",
+                "path": "modulos/programa-obra",
+                "icon": "bar-chart-2"
+              },
+              {
+                "title": "Técnicos",
+                "path": "modulos/tecnicos",
+                "icon": "users"
+              },
+              {
+                "title": "Catálogos",
+                "path": "modulos/catalogos",
+                "icon": "list"
+              },
+              {
+                "title": "Reportes",
+                "path": "modulos/reportes",
+                "icon": "trending-up"
+              },
+              {
+                "title": "Sistema",
+                "path": "modulos/sistema",
+                "icon": "settings"
+              }
+            ]
+          },
+          {
+            "group": "Arquitectura",
             "icon": "layers",
             "pages": [
               {
-                "title": "Images",
-                "path": "components/images",
-                "icon": "image"
+                "title": "Stack y estructura",
+                "path": "arquitectura/stack",
+                "icon": "box"
               },
               {
-                "title": "Cards",
-                "path": "components/cards",
-                "icon": "square"
+                "title": "Base de datos",
+                "path": "arquitectura/base-de-datos",
+                "icon": "database"
               },
               {
-                "title": "Code",
-                "path": "components/code",
+                "title": "Roles y RLS",
+                "path": "arquitectura/roles-permisos",
+                "icon": "shield"
+              },
+              {
+                "title": "Server Actions",
+                "path": "arquitectura/server-actions",
                 "icon": "code"
               },
               {
-                "title": "Callouts",
-                "path": "components/callouts",
-                "icon": "message-square"
-              },
-              {
-                "title": "Steps",
-                "path": "components/steps",
-                "icon": "list-ordered"
-              },
-              {
-                "title": "Tabs",
-                "path": "components/tabs",
-                "icon": "columns"
+                "title": "Seed y datos reales",
+                "path": "arquitectura/seed",
+                "icon": "seedling"
               }
             ]
           }
@@ -78,18 +144,18 @@
         "icon": "code",
         "groups": [
           {
-            "group": "Overview",
+            "group": "Información",
             "icon": "file-text",
             "pages": [
               {
-                "title": "Authentication",
+                "title": "Autenticación",
                 "path": "authentication",
                 "icon": "lock"
               }
             ]
           },
           {
-            "group": "Sample Endpoints",
+            "group": "Endpoints",
             "openapi": "openapi.yaml"
           }
         ]
@@ -109,8 +175,31 @@
             "expandable": false,
             "pages": [
               {
-                "title": "Documentation Source",
-                "path": "help-center/faq/getting-started"
+                "title": "Credenciales y acceso",
+                "path": "help-center/faq/credenciales"
+              },
+              {
+                "title": "Qué hace cada rol",
+                "path": "help-center/faq/roles"
+              }
+            ]
+          },
+          {
+            "group": "Guías",
+            "icon": "book-open",
+            "expandable": false,
+            "pages": [
+              {
+                "title": "Deploy a Vercel",
+                "path": "help-center/guides/deploy"
+              },
+              {
+                "title": "Resembrar la base demo",
+                "path": "help-center/guides/seed-reset"
+              },
+              {
+                "title": "Crear un usuario nuevo",
+                "path": "help-center/guides/crear-usuario"
               }
             ]
           },
@@ -120,19 +209,16 @@
             "expandable": false,
             "pages": [
               {
-                "title": "Page Missing in Sidebar",
-                "path": "help-center/troubleshooting/install-error"
-              }
-            ]
-          },
-          {
-            "group": "Guides",
-            "icon": "book-open",
-            "expandable": false,
-            "pages": [
+                "title": "RLS violation (error 42501)",
+                "path": "help-center/troubleshooting/rls-violation"
+              },
               {
-                "title": "Create Your First Page",
-                "path": "help-center/guides/setup-project"
+                "title": "F200 devuelve 401/403",
+                "path": "help-center/troubleshooting/f200-401"
+              },
+              {
+                "title": "Stock negativo o duplicado",
+                "path": "help-center/troubleshooting/stock-bug"
               }
             ]
           }

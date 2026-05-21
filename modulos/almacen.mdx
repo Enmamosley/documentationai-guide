@@ -1,0 +1,81 @@
+---
+title: Almacén
+description: Inventario denso multi-sede · rutas /almacen, /almacen/surtir, /almacen/traspaso, /almacen/devolucion
+---
+
+## Qué muestra
+
+`/almacen` es la vista del inventario en vivo. Cruza:
+
+- **3 almacenes físicos** (ALM-VC, etc.) — stock central.
+- **6 técnicos** — cada uno con su "mochila" (kit semanal asignado).
+
+Cada fila es un par `(sku, ubicación)`. La tabla es densa: SKU, descripción, UM, disponible, reservado, total, último movimiento, min-stock, precio.
+
+<Callout kind="info">
+  El stock por técnico no es un almacén físico — es lo que se le **surtió** del kit semanal y aún no consume en sus OS. Al liquidar una OS, el material consumido se descuenta atómicamente de la mochila.
+</Callout>
+
+## Sub-flujos
+
+<Columns cols={3}>
+  <Card title="/almacen/surtir" icon="package">
+    El almacenista arma el **kit semanal** para un técnico. Mueve stock de ALM → mochila del técnico.
+  </Card>
+  <Card title="/almacen/traspaso" icon="repeat">
+    Mueve stock entre almacenes físicos (ej. de ALM-VC a ALM-CDMX).
+  </Card>
+  <Card title="/almacen/devolucion" icon="rotate-ccw">
+    El técnico devuelve material no usado. Mochila → almacén origen.
+  </Card>
+</Columns>
+
+## Surtir a técnico (`/almacen/surtir`)
+
+<Steps>
+  <Step title="Elegir técnico y semana" icon="user" title-type="p">
+    El almacenista selecciona destino. La semana es informativa (no es una FK).
+  </Step>
+  <Step title="Armar kit" icon="package" title-type="p">
+    Línea por SKU con cantidad. El stock disponible se valida en vivo contra el almacén origen.
+  </Step>
+  <Step title="Confirmar" icon="check" title-type="p">
+    `surtirAction` mueve stock de forma atómica (decrementa almacén, incrementa mochila). Si falla por concurrencia, retorna error 23514 y se reintenta.
+  </Step>
+</Steps>
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver `/almacen` | admin, almacenista, operaciones |
+| Surtir | admin, almacenista |
+| Traspaso entre almacenes | admin, almacenista |
+| Devolución | admin, almacenista, **técnico** (el suyo) |
+| Editar material entregado a una OS | admin, almacenista |
+
+## Reglas atómicas
+
+<Callout kind="alert">
+  Todas las operaciones de stock pasan por **upserts atómicos** en Supabase (`auditoría 822küg`). Esto evita el bug histórico de stock duplicado cuando dos almacenistas surtían al mismo tiempo.
+</Callout>
+
+```
+src/lib/actions/almacen-movs.ts
+  surtirAction(tecnicoId, items[])
+  traspasoAction(srcAlmacen, dstAlmacen, items[])
+  devolucionAction(tecnicoId, items[])
+```
+
+## Tabla `inventory`
+
+| Columna | Notas |
+|---|---|
+| `sku` | FK a `skus` |
+| `almacen_id` | XOR con `tecnico_id` — un row es de un almacén **o** de una mochila |
+| `tecnico_id` | XOR con `almacen_id` |
+| `disponible` | Stock libre para uso |
+| `reservado` | Stock comprometido a OS abiertas |
+| `total` | Generado: `disponible + reservado` |
+| `min_stock` | Para alertas de reorden |
+| `ult_mov` | Timestamp del último update |

@@ -1,0 +1,69 @@
+---
+title: Deploy a Vercel
+description: Cómo deployar WCG App.
+---
+
+## Estado actual
+
+WCG App ya está deployada en **https://wcg-app-v2.vercel.app**. Esta guía cubre cómo reproducir el deploy si querés un entorno paralelo o levantar un staging propio.
+
+## Requisitos
+
+- Cuenta Vercel
+- Acceso al proyecto Supabase `wcg-app` (o uno propio con el mismo esquema)
+- Vercel CLI (`npm i -g vercel` o usar MCP integrado)
+
+## Pasos
+
+<Steps>
+  <Step title="Linkear el repo a Vercel" icon="github" title-type="p">
+    Desde el dashboard de Vercel: New Project → Import Git Repository → `Enmamosley/wcg-app`.
+  </Step>
+
+  <Step title="Configurar variables de entorno" icon="settings" title-type="p">
+    Settings → Environment Variables (en Production y Preview):
+
+    ```
+    NEXT_PUBLIC_SUPABASE_URL=https://lvqqzpabnmdkamxgxrob.supabase.co
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJhbGc...
+    ```
+
+    Estas son las claves públicas; no agregues la service key.
+  </Step>
+
+  <Step title="Build settings" icon="terminal" title-type="p">
+    Framework preset: **Next.js** (auto-detectado).
+
+    Build command: `npm run build`
+    Output directory: `.next` (default)
+    Install command: `npm install`
+  </Step>
+
+  <Step title="Deploy" icon="rocket" title-type="p">
+    Click Deploy. El primer build toma ~2 minutos.
+  </Step>
+
+  <Step title="Configurar dominio (opcional)" icon="globe" title-type="p">
+    Settings → Domains. Si vas a usar un dominio custom, actualizá el `redirectTo` en Supabase Auth para incluirlo.
+  </Step>
+</Steps>
+
+## Configuración Supabase Auth
+
+Si deployás a un dominio nuevo, agregalo a la lista de URLs permitidas:
+
+**Supabase Dashboard → Authentication → URL Configuration**
+
+- Site URL: `https://tu-dominio.vercel.app`
+- Redirect URLs (incluir todos): `https://tu-dominio.vercel.app/auth/callback`
+
+Sin esto, el login pasa pero el callback falla.
+
+## CI / preview deploys
+
+Por default Vercel deploya:
+
+- **Production** desde `main`
+- **Preview** desde cada PR
+
+Ambos comparten el mismo proyecto Supabase, así que cuidado: una mutación desde un preview pega en la BD compartida. Para aislar, crea un proyecto Supabase separado para staging.

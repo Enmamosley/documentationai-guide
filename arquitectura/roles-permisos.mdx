@@ -1,0 +1,132 @@
+---
+title: Roles y RLS
+description: Quién puede hacer qué, y cómo se garantiza.
+---
+
+## 5 roles
+
+```
+admin · almacenista · operaciones · contable · tecnico
+```
+
+<Columns cols={2}>
+  <Card title="admin" icon="shield">
+    Acceso total. Gestiona usuarios, expediente PII, sistema, todos los catálogos.
+  </Card>
+  <Card title="operaciones" icon="briefcase">
+    Captura OS, asigna ONT, libera EMU, gestiona programa de obra.
+  </Card>
+  <Card title="almacenista" icon="package">
+    Recibe remisiones de CARSO, surte kits semanales, hace traspasos.
+  </Card>
+  <Card title="contable" icon="file-text">
+    Emite/conciliа CFDIs a CARSO, marca pagos, gestiona ciclo EMU.
+  </Card>
+  <Card title="tecnico" icon="hard-hat">
+    Auto-servicio: ve sólo SUS OS / ONTs / EMU. Captura desde campo, liquida lo suyo.
+  </Card>
+</Columns>
+
+## Dos capas, dos propósitos
+
+```
+┌─────────────────────────────────────────┐
+│  Cliente: canView · can                 │ ← UX (esconder botones/rutas)
+│  src/lib/permissions.ts                 │
+├─────────────────────────────────────────┤
+│  Servidor: RLS policies en Postgres     │ ← Seguridad real
+│  current_user_role() = NEW.rol          │
+└─────────────────────────────────────────┘
+```
+
+<Callout kind="alert" collapsed="false">
+  Las funciones `can.X(rol)` y `canView.X(rol)` en el cliente **no son la frontera de seguridad** — sirven para UX. La frontera es RLS en Postgres. Si un cliente "forzara" una mutación que su rol no permite, Postgres responde `42501`.
+</Callout>
+
+## Matriz `can.*` (acciones)
+
+| Acción | admin | operaciones | almacenista | contable | tecnico |
+|---|:-:|:-:|:-:|:-:|:-:|
+| capturarOS | ✓ | ✓ | | | ✓ |
+| liquidarOS | ✓ | ✓ | | | ✓ (suya) |
+| asignarONT | ✓ | ✓ | ✓ | | |
+| liquidarONT | ✓ | ✓ | ✓ | | ✓ (asignada) |
+| marcarONTDanada | ✓ | ✓ | ✓ | | ✓ |
+| editarMedicionesOS | ✓ | ✓ | | | ✓ (suya) |
+| editarExpedienteTecnico | ✓ | | | | |
+| gestionarActivos | ✓ | | | | |
+| gestionarProgramaObra | ✓ | ✓ | | | |
+| recibirRemision | ✓ | | ✓ | | |
+| confirmarRemision | ✓ | | ✓ | | |
+| marcarFacturaPagada | ✓ | | | ✓ | |
+| gestionarCobranzaEMU | ✓ | | | ✓ | |
+| manageUsuarios | ✓ | | | | |
+
+## Matriz `canView.*` (rutas)
+
+| Ruta | admin | operaciones | almacenista | contable | tecnico |
+|---|:-:|:-:|:-:|:-:|:-:|
+| `/os` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `/os/nueva` | ✓ | ✓ | | | ✓ |
+| `/ont` | ✓ | ✓ | ✓ | | ✓ |
+| `/almacen` | ✓ | ✓ | ✓ | | |
+| `/remisiones` | ✓ | ✓ | ✓ | | |
+| `/emu` | ✓ | ✓ | | ✓ | ✓ |
+| `/f200` | ✓ | ✓ | | ✓ | |
+| `/facturas` | ✓ | | | ✓ | |
+| `/reportes` | ✓ | ✓ | ✓ | ✓ | |
+| `/catalogos` | ✓ | ✓ | ✓ | ✓ | |
+| `/tecnicos` | ✓ | ✓ | ✓ | ✓ | |
+| `/programa-obra` | ✓ | ✓ | | | |
+| `/sistema` | ✓ | | | | |
+
+## Cómo funciona
+
+<Steps>
+  <Step title="Middleware redirige sin sesión" icon="lock" title-type="p">
+    `middleware.ts` corre en cada request. Si no hay user, redirige a `/login?from=<path>`. Rutas públicas: `/login`, `/auth/callback`.
+  </Step>
+
+  <Step title="Server Component filtra rutas" icon="filter" title-type="p">
+    Cada `page.tsx` consulta el rol con `fetchSessionUser()` y llama `canView.X(rol)`. Si false → `redirect("/")`.
+  </Step>
+
+  <Step title="Sidebar filtra items" icon="list" title-type="p">
+    `SideNav.tsx` recibe el rol y oculta los items para los que `canView.X` es false. Eso evita confusión con secciones que no le tocan.
+  </Step>
+
+  <Step title="Server Action ejecuta mutación" icon="zap" title-type="p">
+    El usuario interactúa con un botón → Server Action → `getSupabaseServer()` → JWT viaja a Postgres → RLS evalúa contra `current_user_role()`.
+  </Step>
+
+  <Step title="Postgres es la palabra final" icon="database" title-type="p">
+    Si la policy no permite, retorna `42501` (RLS violation). El UI muestra el error sin haber tocado datos.
+  </Step>
+</Steps>
+
+## Por qué el técnico ve sólo lo suyo
+
+Para el rol `tecnico`, las RLS policies relevantes filtran por `auth.uid()`:
+
+```sql
+CREATE POLICY tecnico_only_self ON os
+  FOR SELECT USING (
+    current_user_role() != 'tecnico'
+    OR EXISTS (
+      SELECT 1 FROM tecnicos
+      WHERE tecnicos.id = os.tecnico_id
+      AND tecnicos.user_id = auth.uid()
+    )
+  );
+```
+
+Esto se replica en `onts`, `emu_rows`, etc. El técnico no necesita filtros en la UI — Postgres ya devuelve sólo sus filas.
+
+## Bug 4: escalation de rol cerrado
+
+<Callout kind="alert">
+  Antes del commit `6436986`, un usuario podía cambiar su propio `rol` vía la action de update perfil. Ahora:
+  - El endpoint de **signup** ignora `rol` enviado por el cliente (se fuerza a `tecnico` como default).
+  - El **self-update** de `user_profiles` no permite cambiar `rol` (trigger BEFORE UPDATE lo aborta).
+  - Sólo admin cambia roles desde `/sistema`.
+</Callout>

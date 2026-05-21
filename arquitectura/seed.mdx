@@ -1,0 +1,99 @@
+---
+title: Seed y datos reales
+description: Cómo se siembra la base. Dónde vienen los datos del Excel real.
+---
+
+## Dos fuentes de seed
+
+<Columns cols={2}>
+  <Card title="Seed sintético" icon="seedling">
+    `build-seed.mjs` genera datos con RNG semilla fija. Reproduce 1:1 el demo state del prototipo original.
+  </Card>
+  <Card title="Datos reales (SKUs)" icon="database">
+    `build-telmex-import.mjs` extrae los 34 SKUs reales de `Data/RECALCULO ALTA FO ACTUALIZADO.xlsx`.
+  </Card>
+</Columns>
+
+## Seed sintético
+
+```bash
+node scripts/build-seed.mjs > scripts/seed.sql
+```
+
+Genera SQL para:
+
+- 6 técnicos
+- 3 almacenes
+- 12 SKUs mock históricos (los reales vienen del otro script)
+- 86 OS (estados distribuidos: Capturada/Liquidada/Facturada/Pagada/Cancelada)
+- 120 ONT (en almacén / asignadas / liquidadas / dañadas)
+- 63 filas de inventory
+- 28 facturas con varios estados
+- 6 oc_candidates (legacy)
+
+<Callout kind="info">
+  Las semillas RNG están hardcodeadas en el script (`Math.seedrandom("wcg-2026")`). Cambiar la semilla → cambian los datos sintéticos pero la **estructura** sigue siendo válida.
+</Callout>
+
+## Datos reales: SKUs Telmex
+
+```bash
+node scripts/build-telmex-import.mjs > scripts/telmex-import.sql
+```
+
+Lee `Data/RECALCULO ALTA FO ACTUALIZADO.xlsx` y genera:
+
+- 34 SKUs con clave AXAPTA
+- Cada SKU con su `siatel` (7-dígitos), descripción, UM, precio
+- Los **3 factores Telmex**:
+  - `factor_alta_ftth`
+  - `factor_mig_ftth`
+  - `factor_mig_ftth_vieja`
+
+Esos factores son lo que `/os/nueva` usa para pre-rellenar la sugerencia de material.
+
+## Helpers Python
+
+Hay un par de scripts Python para inspeccionar/extraer datos del Excel cuando hace falta:
+
+```bash
+python scripts/extract-telmex.py        # exporta a JSON para debug
+python scripts/extract-real-data.py     # cruza varios archivos del cliente
+```
+
+Estos son ad-hoc — no se corren en deploy.
+
+## Aplicar a Supabase
+
+```bash
+# Truncate primero (cuidado en prod)
+psql $SUPABASE_DB_URL -f scripts/seed_00_truncate.sql
+
+# Aplicar seeds en orden (FKs)
+psql $SUPABASE_DB_URL -f scripts/seed_01_tecnicos.sql
+psql $SUPABASE_DB_URL -f scripts/seed_02_almacenes.sql
+psql $SUPABASE_DB_URL -f scripts/seed_03_skus.sql
+psql $SUPABASE_DB_URL -f scripts/seed_04_os.sql
+psql $SUPABASE_DB_URL -f scripts/seed_05_onts.sql
+psql $SUPABASE_DB_URL -f scripts/seed_06_inventory.sql
+
+# Datos reales
+psql $SUPABASE_DB_URL -f scripts/telmex-import.sql
+
+# Real-data extra (técnicos reales, etc.)
+psql $SUPABASE_DB_URL -f scripts/real-data.sql
+```
+
+## Documentos fuente
+
+| Archivo en `Data/` | Siembra |
+|---|---|
+| `RECALCULO ALTA FO ACTUALIZADO.xlsx` | `skus` (los 34 reales) |
+| `EMU PENDIENTE POR COBRAR 2025.xlsx` | Pendiente — el módulo /emu aún usa datos sintéticos |
+| `RELACION FACTURAS CARSO-MAYO-LOTE-1.XLSX` | Pendiente — /facturas usa datos sintéticos |
+| `ejemplo_salida.xlsx` | **Ignorar** — no es de WCG |
+| Contratos PDF | Para `/sistema/documentos` (subida manual) |
+
+<Callout kind="tip">
+  Cuando importes EMU o facturas reales, generá un script gemelo a `build-telmex-import.mjs`. El patrón es: parsear XLSX → emitir SQL → versionar el .sql en `scripts/`.
+</Callout>

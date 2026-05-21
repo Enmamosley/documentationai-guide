@@ -1,58 +1,87 @@
 ---
 title: Quickstart
-description: Minimal steps to customize this sample starter kit.
+description: Corre WCG App local en 5 minutos.
 ---
-## Overview
 
-<Callout kind="alert" collapsed="false">
-  This site ships with placeholder content. Use this quickstart to replace it with your real product docs.
+## Requisitos
+
+- Node 20+ y npm 10+
+- Acceso al proyecto Supabase `wcg-app` (id `lvqqzpabnmdkamxgxrob`, región `us-east-2`)
+- Las credenciales públicas (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) viven en `.env.example`
+
+## Levantar el entorno
+
+<Steps>
+  <Step title="Clonar y configurar" icon="download" title-type="p">
+    ```bash
+    git clone https://github.com/Enmamosley/wcg-app.git
+    cd wcg-app
+    npm install
+    cp .env.example .env.local
+    ```
+    El `.env.example` ya viene poblado con la URL y la publishable key del proyecto Supabase compartido.
+  </Step>
+
+  <Step title="Arrancar dev server" icon="zap" title-type="p">
+    ```bash
+    npm run dev
+    ```
+    Abre http://localhost:3000. El middleware te redirige a `/login`.
+  </Step>
+
+  <Step title="Login con la cuenta demo" icon="lock" title-type="p">
+    - **Email**: `admin@splanding.dev`
+    - **Password**: `wcg-admin-2026`
+    - **Rol**: admin (ve todo)
+
+    Para probar otros roles, crea usuarios desde `/sistema` → Usuarios.
+  </Step>
+
+  <Step title="Pasea por las pantallas" icon="navigation" title-type="p">
+    El sidebar muestra **9 módulos**. Usa **⌘K / Ctrl+K** para abrir el command palette y buscar folios, alfanuméricos, facturas o RFCs.
+  </Step>
+</Steps>
+
+## Genera tu primer F200
+
+<Steps>
+  <Step title="Entra a /f200" icon="download" title-type="p">
+    Selecciona periodo (ej. `2026-05-W19`), técnico y tipo de servicio.
+  </Step>
+  <Step title="Verifica el preview" icon="eye" title-type="p">
+    El preview tipo spreadsheet muestra exactamente las filas que se exportarán. Si hay OS no liquidadas, no aparecen — eso es esperado.
+  </Step>
+  <Step title="Descarga el .xlsx" icon="download" title-type="p">
+    El botón llama a `GET /api/f200` con los filtros como query params. El navegador descarga `F200_2026-05-W19.xlsx`.
+  </Step>
+</Steps>
+
+<Callout kind="tip">
+  El F200 sale con el formato exacto del template Telmex v2.4: header congelado, números a la derecha con `#,##0.00`, totales al pie. Súbelo directo al portal sin pegar nada en Excel.
 </Callout>
 
-## 1. Update a page
+## Scripts útiles
 
-<Steps>
-  <Step title="Edit introduction" icon="edit" title-type="p">
-    Replace the sample introduction with a concise overview of your product and the key actions you want new users to take first.
-  </Step>
+```bash
+npm run dev      # dev server con Turbopack
+npm run build    # build de producción
+npm run lint     # eslint
 
-  <Step title="Preview your change" icon="monitor" title-type="p">
-    Use your dashboard board editor to confirm the updated introduction looks and reads as expected.
-  </Step>
-</Steps>
+# Re-seed reproducible (rara vez se corre)
+node scripts/build-seed.mjs > scripts/seed.sql
+node scripts/build-telmex-import.mjs > scripts/telmex-import.sql
 
-## 2. Add a new page
+# Regenerar tipos desde Supabase
+npx supabase gen types typescript --project-id lvqqzpabnmdkamxgxrob > src/lib/database.types.ts
+```
 
-<Steps>
-  <Step title="Add a page" icon="file-text" title-type="p">
-    Create a new `page` by clicking on the + button from the left navigation bar of dashboard. If you are using git, create the .mdx file and add to navigation bar using documentation.json
-  </Step>
-</Steps>
+## Siguiente
 
-## Example onboarding flow (replace with yours)
-
-1. Sign up for an account and verify your email.
-
-2. Create your first workspace, project, or environment.
-
-3. Add one integration or data source to connect your existing tools.
-
-4. Complete a guided action (for example, run your first job or publish your first resource).
-
-5. Invite a teammate and assign a basic role or permission.
-
-## 3. Connect API Reference (optional)
-
-If you have an API, replace `openapi.yaml` with your real OpenAPI file. If you do not need an API reference, remove that tab either from dashboard or  `documentation.json`.
-
-## Next steps
-
-<Columns cols="2">
-  <Card title="Core Concepts" href="/concepts" icon="layers" horizontal="false">
-    Keep the mental model simple and easy to scan.
+<Columns cols={2}>
+  <Card title="Conceptos" href="/concepts" icon="layers" horizontal="false">
+    Aprende el vocabulario del dominio antes de tocar código.
   </Card>
-
-  <Card title="Authentication" href="/authentication" icon="lock" horizontal="false">
-    Add your real auth flows and security notes.
+  <Card title="Roles y RLS" href="/arquitectura/roles-permisos" icon="shield" horizontal="false">
+    Entiende por qué un técnico no ve facturas.
   </Card>
 </Columns>
-

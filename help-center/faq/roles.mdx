@@ -1,0 +1,18 @@
+---
+title: Qué hace cada rol
+description: Resumen ejecutivo de los 5 roles.
+---
+
+## En una tabla
+
+| Rol | Qué hace | No puede |
+|---|---|---|
+| **admin** | Todo: usuarios, expediente PII, sistema | (nada) |
+| **operaciones** | Captura OS, asigna ONT, libera EMU, programa de obra | Editar PII de técnicos, gestionar usuarios |
+| **almacenista** | Recibe remisiones de CARSO, surte kits, traspasos | Ver facturas, ver EMU, sistema |
+| **contable** | Emite/conciliа CFDIs a CARSO, marca pagos, EMU | Ver almacén/ONT/programa, gestionar usuarios |
+| **tecnico** | Auto-servicio: sus OS / ONTs / EMU | Ver datos de otros técnicos, facturas, reportes, sistema |
+
+## Para más detalle
+
+Ver [Roles y RLS](/arquitectura/roles-permisos) — matriz completa con las acciones (`can.*`) y vistas (`canView.*`), más cómo las RLS policies aplican estas reglas en Postgres.

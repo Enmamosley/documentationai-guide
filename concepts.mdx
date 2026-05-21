@@ -1,54 +1,111 @@
 ---
-title: Core Concepts
-description: The basic building blocks of this starter kit.
+title: Conceptos
+description: Vocabulario del dominio WCG / Telmex. Léelo antes de tocar la base.
 ---
 
-## Overview
+## Por qué importa
 
-<Callout kind="alert">
-This page is an example. Replace every concept with the real terms your product uses.
+El código de WCG App está plagado de siglas (R20, F200, EMU, CFDI, SIATEL, FTTH). Sin este glosario el modelo de datos parece arbitrario; con él, cada tabla cuadra con un documento real del cliente.
+
+<Callout kind="info" collapsed="false">
+  WCG no es un cliente final — es **contratista de Telmex / CARSO**. Casi todos los términos vienen del lado Telmex.
 </Callout>
 
-## The building blocks
+## Entidades de dominio
 
 <Columns cols={2}>
-  <Card title="Pages" icon="file-text">
-    Every page is an `.mdx` file. Content lives in the repo and is safe to edit.
+  <Card title="OS — Orden de Servicio" icon="clipboard-list">
+    Trabajo solicitado por Telmex (alta de cliente, migración, reparación). Tiene **folio WCG** + **folio SIATEL** (Telmex). Estado: Capturada → Liquidada → Facturada → Pagada.
   </Card>
-  <Card title="Navigation" icon="list">
-    Sidebar structure comes from `documentation.json`.
+  <Card title="ONT" icon="router">
+    Equipo terminal (modem de fibra) que se instala en casa del cliente. Identificado por **alfanumérico**. Ciclo: En almacén → Con técnico → Liquidada → Facturada.
   </Card>
-  <Card title="Components" icon="layout-grid">
-    Reusable blocks like Callouts, Steps, Tabs, and Cards keep pages consistent.
+  <Card title="SKU" icon="hash">
+    Clave AXAPTA del material que CARSO surte. Cada SKU tiene 3 factores Telmex (`alta_ftth`, `mig_ftth`, `mig_ftth_vieja`) que dicen cuántas piezas consume cada tipo de OS.
   </Card>
-  <Card title="API Reference" icon="code">
-    If you use it, the API tab reads from `openapi.yaml`.
+  <Card title="Remisión" icon="truck">
+    Documento con el que **CARSO envía material a WCG**. Estados: En tránsito → Recibida → Confirmada. Al confirmar, el stock entra al almacén destino.
+  </Card>
+  <Card title="Factura emitida (CFDI)" icon="file-text">
+    Factura que **WCG emite a CARSO**. Va en lotes con CARSO y pasa por: Borrador → Emitida → En revisión → Aceptada → Por pagar → Pagada.
+  </Card>
+  <Card title="EMU" icon="calendar">
+    **E**stimación **M**ensual de **U**nidades. Cobranza semanal por técnico × concepto. Cuando una factura asociada se marca Pagada, las filas EMU pasan a Cobrado por trigger SQL.
   </Card>
 </Columns>
 
-## Navigation shape (sample)
+## Formatos / reportes
 
-```json
-{
-  "tab": "Documentation",
-  "groups": [
-    {
-      "group": "Getting Started",
-      "pages": [
-        { "title": "Introduction", "path": "introduction" }
-      ]
-    }
-  ]
-}
+<Columns cols={2}>
+  <Card title="R20" icon="file-text">
+    Formato físico que Telmex pide por cada OS instalada en campo. Lleva mediciones (potencia óptica, distrito, terminal, alfanumérico de poste). Lo llena el técnico; PDF en `/api/os/[id]/r20`.
+  </Card>
+  <Card title="F200" icon="download">
+    Reporte semanal que WCG sube al portal de Telmex con todas las OS liquidadas del periodo. `.xlsx` real con `exceljs` desde `/api/f200`.
+  </Card>
+</Columns>
+
+## Tipos de servicio
+
+| Tipo | Factor que aplica | Descripción |
+|---|---|---|
+| **Alta FTTH** | `factor_alta_ftth` | Cliente nuevo con fibra |
+| **Migración FTTH** | `factor_mig_ftth` | Cliente cobre → fibra (terminal nuevo) |
+| **Migración FTTH vieja** | `factor_mig_ftth_vieja` | Cliente cobre → fibra (terminal existente) |
+
+El factor multiplica las **altas** de la OS para sugerir cuánto material se necesita. Por ejemplo, un SKU con factor 1.0 en Alta FTTH y altas=3 sugiere 3 piezas.
+
+## Estados (al detalle)
+
+### OS
+
+```
+Capturada  →  Liquidada  →  Facturada  →  Pagada
+     ↓
+  Cancelada
 ```
 
-## How to adapt this page
+- **Capturada**: el técnico (o operaciones) llenó el R20 desde campo.
+- **Liquidada**: el material se consumió del kit del técnico (auto-consumo desde stock por mochila) y la OS está lista para reportar.
+- **Facturada**: incluida en una factura CFDI emitida a CARSO.
+- **Pagada**: CARSO depositó.
 
-<Steps>
-  <Step title="Replace the terms" icon="edit">
-    Swap "Pages" and "Components" for your real domain language.
-  </Step>
-  <Step title="Add your concepts" icon="plus">
-    Create a section for the ideas your users must learn first.
-  </Step>
-</Steps>
+### ONT
+
+```
+En almacén  →  Con técnico  →  Liquidada  →  Facturada
+                     ↓
+                  Dañada
+```
+
+### Factura emitida
+
+```
+Borrador → Emitida → Enviada al lote → En revisión CARSO →
+  Aceptada → Por pagar → Pagada parcial → Pagada
+```
+
+Rechazada y Cancelada salen del flujo en cualquier punto.
+
+## Mapa de actores
+
+<Columns cols={2}>
+  <Card title="WCG (nosotros)" icon="users">
+    Captura OS, instala, factura, cobra.
+  </Card>
+  <Card title="CARSO" icon="building">
+    Cliente directo. Surte material por remisión, recibe CFDIs, paga.
+  </Card>
+  <Card title="Telmex" icon="phone">
+    Origen de la demanda. Envía OS por SIATEL, exige R20 + F200.
+  </Card>
+  <Card title="Técnico de campo" icon="hard-hat">
+    Recibe kit en su mochila, instala en casa del cliente, captura el R20.
+  </Card>
+</Columns>
+
+## Siguiente
+
+<Card title="Ve a los módulos" href="/modulos/inicio" icon="layout-grid">
+  Una página por pantalla con flujo y permisos.
+</Card>

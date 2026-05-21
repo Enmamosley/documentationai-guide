@@ -1,0 +1,77 @@
+---
+title: Facturas emitidas (CFDI)
+description: CFDIs que WCG emite a CARSO · ruta /facturas, /facturas/[id]
+---
+
+## Qué muestra
+
+`/facturas` lista todos los **CFDIs emitidos por WCG a CARSO** con tabs por estado. Cada fila es un comprobante fiscal con serie + folio, RFC receptor (siempre CARSO), monto, UUID SAT y lote CARSO.
+
+<Callout kind="alert">
+  No confundir con "facturas recibidas". WCG **no** compra material externo — CARSO surte vía remisión. Las facturas que importan acá son las que WCG **emite** a CARSO para cobrar.
+</Callout>
+
+## Ciclo de vida (10 estados)
+
+```
+Borrador → Emitida → Enviada al lote → En revisión CARSO →
+  Aceptada → Por pagar → Pagada parcial → Pagada
+                    ↓
+                Rechazada
+                Cancelada
+```
+
+| Estado | Quién la mueve |
+|---|---|
+| **Borrador** | Contabilidad arma el CFDI |
+| **Emitida** | Se selló con el PAC; tiene UUID SAT |
+| **Enviada al lote** | Se envió a CARSO dentro de un lote semanal |
+| **En revisión CARSO** | CARSO la está validando |
+| **Aceptada** | CARSO la validó; entra al ciclo de pago |
+| **Por pagar** | Aceptada y a la espera de depósito |
+| **Pagada parcial** | CARSO pagó una parte |
+| **Pagada** | Pagada total → trigger marca filas EMU como Cobrado |
+| **Rechazada** | CARSO la rechazó; requiere reproceso |
+| **Cancelada** | Se canceló ante SAT |
+
+## Detalle `/facturas/[id]`
+
+- **Datos fiscales**: serie/folio, UUID SAT, RFC emisor (WCG) y receptor (CARSO), subtotal/IVA/total.
+- **Conceptos**: lista de OS / EMU que conforman la factura.
+- **XML + PDF adjuntos**: parser CFDI 4.0 extrae los datos del XML al subirlo (`src/lib/cfdi-parser.ts`).
+- **Lote CARSO**: número de lote para tracking.
+- **Historial**: cada cambio de estado con timestamp y usuario.
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver `/facturas` | admin, **contable** |
+| Crear borrador | admin, contable |
+| Adjuntar XML/PDF | admin, contable |
+| Mover de estado | admin, contable |
+| Marcar pagada | admin, **contable** |
+
+## Adjuntar CFDI 4.0
+
+<Steps>
+  <Step title="Subir XML" icon="upload" title-type="p">
+    Drag-and-drop del XML del CFDI emitido por el PAC.
+  </Step>
+  <Step title="Parser extrae datos" icon="cpu" title-type="p">
+    `parseCFDI(xml)` de `src/lib/cfdi-parser.ts` extrae UUID, totales, conceptos y los compara contra lo capturado.
+  </Step>
+  <Step title="Adjuntar PDF" icon="paperclip" title-type="p">
+    El PDF se sube como respaldo visual. Queda en Supabase Storage.
+  </Step>
+</Steps>
+
+## Server Actions
+
+```
+src/lib/actions/facturas.ts
+  crearBorradorFacturaAction(data)
+  adjuntarCFDIAction(facturaId, xmlFile, pdfFile)
+  cambiarEstadoFacturaAction(facturaId, nuevoEstado, motivo?)
+  marcarPagadaAction(facturaId, fechaPago)    # ← dispara trigger EMU.Cobrado
+```

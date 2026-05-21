@@ -1,0 +1,80 @@
+---
+title: F200 (reporte semanal Telmex)
+description: Generador del .xlsx que WCG sube al portal Telmex · ruta /f200
+---
+
+## Qué es el F200
+
+El **F200** es el reporte semanal que Telmex exige de cada contratista. Lleva todas las OS liquidadas del periodo con su técnico, cliente, domicilio, importe. Se sube como `.xlsx` al portal Telmex.
+
+Antes WCG lo armaba copiando filas de Excel a Excel. Ahora `/f200` lo genera con `exceljs` listo para subir.
+
+## Pantalla `/f200`
+
+<Steps>
+  <Step title="Selecciona periodo" icon="calendar" title-type="p">
+    Formato `YYYY-MM-Wnn` (ej. `2026-05-W19`).
+  </Step>
+  <Step title="Filtra (opcional)" icon="filter" title-type="p">
+    Por técnico individual o tipo de servicio. Sin filtros = todo el periodo.
+  </Step>
+  <Step title="Verifica preview" icon="eye" title-type="p">
+    Preview tipo spreadsheet con exactamente las filas que se exportarán. Sólo OS en estados Liquidada, Facturada o Pagada entran al reporte.
+  </Step>
+  <Step title="Descarga" icon="download" title-type="p">
+    Click al botón → llama a `GET /api/f200?periodo=…&tecnico=…&tipo=…` → descarga `F200_2026-05-W19.xlsx`.
+  </Step>
+</Steps>
+
+## Endpoint
+
+```
+GET /api/f200?periodo=2026-05-W19&tecnico=T-014&tipo=Alta+nuevo
+```
+
+| Query param | Default | Notas |
+|---|---|---|
+| `periodo` | `sin-periodo` | Va en el nombre del archivo |
+| `tecnico` | `all` | ID del técnico (T-014) o `all` |
+| `tipo` | `all` | Tipo de servicio o `all` |
+
+Respuesta: `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` con `Content-Disposition: attachment`.
+
+## Formato Telmex v2.4
+
+11 columnas en este orden:
+
+| # | Columna | Ancho | Notas |
+|---|---|---|---|
+| 1 | Folio WCG | 12 | |
+| 2 | Folio SIATEL | 16 | |
+| 3 | Fecha | 12 | YYYY-MM-DD |
+| 4 | Tipo servicio | 20 | |
+| 5 | Cliente | 32 | |
+| 6 | Teléfono | 14 | |
+| 7 | Domicilio | 40 | `calle, colonia, alcaldía` concatenado |
+| 8 | CP | 8 | |
+| 9 | Técnico | 28 | `T-014 Juan` |
+| 10 | Altas | 8 | Numérico derecha |
+| 11 | Importe MXN | 14 | `#,##0.00` derecha |
+
+- **Header**: bold, fondo `#F1F3F6`, bordes finos `#DCE0E6`, congelado (`ySplit: 1`)
+- **Totales al pie**: suma de altas e importe, bold con fondo gris
+- **Cap**: máximo 200 filas por archivo
+
+## Permisos
+
+| Acción | Roles |
+|---|---|
+| Ver `/f200` y descargar | admin, **operaciones**, **contable** |
+
+<Callout kind="alert">
+  Si llamas a `/api/f200` sin sesión o con un rol no autorizado, devuelve 401 o 403. Es la única protección del endpoint (no hay tokens API).
+</Callout>
+
+## Código
+
+```
+src/app/api/f200/route.ts        # GET handler con exceljs
+src/components/screens/F200Client.tsx   # preview interactivo
+```

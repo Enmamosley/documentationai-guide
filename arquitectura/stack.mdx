@@ -1,0 +1,128 @@
+---
+title: Stack y estructura
+description: Tecnologías, organización de archivos y convenciones.
+---
+
+## Stack
+
+<Columns cols={2}>
+  <Card title="Next.js 16" icon="zap">
+    App Router, Turbopack, Server Components, Route Handlers.
+  </Card>
+  <Card title="React 19" icon="code">
+    Sin librerías UI. CSS tradicional con variables como design tokens (sin Tailwind).
+  </Card>
+  <Card title="TypeScript 5 estricto" icon="check-square">
+    `tsconfig.json` con `strict: true`. Tipos generados desde Supabase.
+  </Card>
+  <Card title="Supabase" icon="database">
+    Postgres 17 + PostgREST. `@supabase/supabase-js` + `@supabase/ssr` para auth con cookies.
+  </Card>
+  <Card title="exceljs" icon="file-spreadsheet">
+    Para la generación del F200 en `/api/f200`.
+  </Card>
+  <Card title="fast-xml-parser" icon="file-code">
+    Para parsear el XML de los CFDIs 4.0 adjuntados.
+  </Card>
+</Columns>
+
+## Estructura del repo
+
+```
+src/
+  app/
+    layout.tsx                 # Root layout + fonts (Inter, JetBrains Mono)
+    globals.css                # Design system (tokens + componentes CSS)
+    login/page.tsx             # Login con email + password
+    (app)/                     # Route group con shell común
+      layout.tsx               # Importa <AppShell>
+      page.tsx                 # Inicio (server → InicioClient)
+      os/{page,nueva,[id]}/page.tsx
+      ont/{page,[id],lote}/page.tsx
+      almacen/{page,surtir,traspaso,devolucion}/page.tsx
+      remisiones/{page,nueva,[numero]}/page.tsx
+      emu/page.tsx
+      facturas/page.tsx
+      f200/page.tsx
+      programa-obra/page.tsx
+      tecnicos/page.tsx
+      catalogos/{page,[slug]}/page.tsx
+      reportes/page.tsx
+      sistema/{page,empresa,documentos}/page.tsx
+    api/
+      f200/route.ts                          # GET .xlsx
+      os/[id]/r20/route.ts                   # GET PDF
+      remisiones/[numero]/vale/route.ts      # GET PDF
+      tecnicos/[id]/credencial/route.ts      # GET PDF
+      tecnicos/[id]/ficha/route.ts           # GET PDF
+
+  components/
+    layout/
+      AppShell.tsx           # Cliente, owns collapsed + cmd palette state
+      SideNav.tsx            # Sidebar filtrado por rol
+      TopBar.tsx             # Breadcrumbs + ⌘K
+      CommandPalette.tsx     # Búsqueda global async (debounce 150ms)
+    ui/
+      Icons.tsx              # 40+ íconos SVG inline
+      Badge.tsx · Field.tsx · Avatar.tsx
+    screens/
+      <Pantalla>Client.tsx   # Una por pantalla interactiva
+
+  lib/
+    types.ts                 # Tipos de dominio (OS, ONT, Factura, …)
+    catalogs.ts              # Constantes estables (TECNICOS, ALMACENES, …)
+    database.types.ts        # Tipos generados por Supabase
+    supabase-client.ts       # Cliente browser
+    supabase-server.ts       # Cliente server (cookies)
+    db.ts                    # Capa de acceso: fetchAllOS, fetchInicioData, …
+    format.ts                # fmtMXN, fmtDate, fmtDateTime
+    permissions.ts           # can.X(rol), canView.X(rol)
+    cfdi-parser.ts           # parseCFDI(xml) para CFDIs 4.0
+    csv.ts                   # toCSV(rows) para exports
+    emu-helpers.ts           # buildEMUMatrix, weekISO, …
+    actions/
+      os.ts · onts.ts · facturas.ts · remisiones.ts
+      almacen-movs.ts · emu.ts · tecnicos.ts
+      empresa.ts · documentos.ts · users.ts
+
+scripts/
+  build-seed.mjs             # Genera SQL de seed reproducible
+  build-telmex-import.mjs    # Importa 34 SKUs reales de Excel
+  seed_NN_<tabla>.sql        # Seeds particionados
+  telmex-import.sql          # SKUs reales
+  extract-telmex.py          # Helper python para parsear el Excel
+```
+
+## Convenciones
+
+<Steps>
+  <Step title="Server + Client split" icon="layers" title-type="p">
+    Cada pantalla interactiva está partida en:
+    - `page.tsx` (Server Component) — hace `fetch` a Supabase con cookies vía `getSupabaseServer()`.
+    - `<Pantalla>Client.tsx` (Client Component) — recibe data como props, maneja UI.
+
+    El servidor cachea con `force-dynamic` por default; mover a `force-static + ISR` cuando se quiera.
+  </Step>
+
+  <Step title="Sin Tailwind" icon="palette" title-type="p">
+    El diseño viene del bundle Claude Design en `prototype/`. Se mantuvo CSS tradicional con variables como design tokens (`globals.css`) para pixel-perfect.
+  </Step>
+
+  <Step title="Mutaciones via Server Actions" icon="zap" title-type="p">
+    Nunca se mutan datos desde Client Components con fetch. Todas las mutaciones pasan por `actions/*.ts` que usan `getSupabaseServer()` (JWT del usuario llega a Postgres → RLS evalúa).
+  </Step>
+
+  <Step title="Sólo desktop 1280–1440px" icon="monitor" title-type="p">
+    Regla `min-width: 1280px` en `.app` fuerza scroll horizontal antes que colapsar el layout. Móvil queda fuera de scope hasta Fase 2.
+  </Step>
+</Steps>
+
+## Cómo correr
+
+```bash
+npm install
+cp .env.example .env.local
+npm run dev      # http://localhost:3000 con Turbopack
+npm run build    # producción
+npm run lint     # eslint
+```
