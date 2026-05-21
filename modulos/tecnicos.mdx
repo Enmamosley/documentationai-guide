@@ -23,9 +23,52 @@ Por cada técnico, el expediente cumple los requisitos de **REPSE / IMSS**:
     Listado de los 6 técnicos activos.
   </Card>
   <Card title="/tecnicos/[id]" icon="user">
-    Detalle con tabs: Expediente · Activos · Documentos · Historial OS.
+    Detalle con tabs: Expediente · **Inventario actual** · **Documentos** · Herramienta · Vehículo.
   </Card>
 </Columns>
+
+## Foto del técnico
+
+Sub-panel en Expediente muestra la foto (96px preview en panel, 36px circular en header).
+
+- **Storage**: bucket privado `wcg-docs` con prefijo `tecnico-fotos/<id>.<ext>`
+- **Acceso**: signed URL con TTL 10 min (generada server-side en `page.tsx`)
+- **Subir / Reemplazar**: admin u operaciones, `image/*` hasta 5 MB (upsert)
+- **Eliminar**: sólo admin (NULL el campo + `remove()` el blob)
+
+```
+src/lib/actions/tecnicos.ts
+  subirFotoTecnicoAction(tecnicoId, formData)      # admin · operaciones
+  eliminarFotoTecnicoAction(tecnicoId)             # admin
+```
+
+## Tab Inventario actual
+
+Vista en vivo de lo que el técnico tiene **en este momento** en su mochila. Útil para detectar:
+
+- Si necesita más cable / fibra (alerta de surtido).
+- **Descuadres** (items en negativo por consumo sin surtido previo) — banner warning rojo.
+- Material olvidado al cambiar de proyecto.
+
+4 stat cards: SKUs distintos (split positivos/cero/negativos), unidades totales, valor estimado MXN, última fecha de movimiento. Tabla con filas en rojo si `disponible < 0`, gris si `= 0`.
+
+```
+src/lib/db.ts
+  fetchInventarioDeTecnico(tecnicoId): Promise<{ items: StockTecnicoItem[] } | null>
+```
+
+Empty state lleva a `/almacen/surtir`.
+
+## Tab Documentos
+
+Lista de documentos vinculados al técnico (PII, contratos, fotos). Botón "Subir otro" lleva a `/sistema/documentos?tecnico_id=<id>` con el form pre-fillado.
+
+```
+src/lib/db.ts
+  fetchDocumentosDeTecnico(tecnicoId): Promise<Documento[]>
+```
+
+RLS: el propio técnico ve sólo los suyos; admin/operaciones/contable ven todos los del técnico consultado.
 
 ## Imprimibles
 
@@ -58,4 +101,6 @@ src/lib/actions/tecnicos.ts
   actualizarExpedienteAction(tecnicoId, data)
   asignarHerramientaAction(tecnicoId, items[])
   asignarVehiculoAction(tecnicoId, placa, marca, modelo)
+  subirFotoTecnicoAction(tecnicoId, formData)        # admin · operaciones
+  eliminarFotoTecnicoAction(tecnicoId)               # admin
 ```

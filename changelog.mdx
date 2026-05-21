@@ -5,6 +5,18 @@ description: Cambios relevantes de WCG App.
 
 ## Cambios recientes
 
+<Update label="2026-05-20 (noche)" description="Tecnico detail: foto + tabs Inventario/Documentos · Bugs 9/10/11/12/13 · Endurecimiento RLS" tags={["seguridad", "rls", "tecnicos", "cleanup"]}>
+## /tecnicos/[id] enriquecido
+- `b1d7100` — Foto del técnico (storage `wcg-docs/tecnico-fotos/<id>.<ext>`, signed URL 10min) + tab **Documentos** scoped por técnico. Actions `subirFotoTecnicoAction` (admin · operaciones, ≤5 MB) y `eliminarFotoTecnicoAction` (admin).
+- `4d57594` — Tab **Inventario actual** con mochila en vivo: SKUs distintos, unidades totales, valor MXN, última fecha de movimiento. Banner rojo si hay descuadres (items en negativo). `fetchInventarioDeTecnico(tecnicoId)`.
+
+## Cleanup final
+- `60248f3` — **Bug 9**: drop estado `En tránsito` de `remision_estado` (era código muerto; el flow real arranca en `Recibida`). `marcarRemisionRecibidaAction` eliminada. Nota: `En tránsito` sigue válido en `traspaso_estado` (movimientos entre almacenes WCG). **Bug 13**: drop tabla legacy `facturas` y enum `factura_estado` (0 rows, 0 referencias). Sólo queda `facturas_emitidas`.
+
+## Endurecimiento de seguridad
+- `d141f9f` — **Parche D — RLS SELECT por rol/ownership** en ~15 tablas. Antes `USING (true)` permitía a un técnico leer expedientes ajenos, facturas y docs corporativos vía `supabase-client` desde devtools. Ahora cada tabla filtra por rol u ownership. Catálogos puros (skus, almacenes, tecnicos, copes, etc.) siguen abiertos. **Bug 10**: UNIQUE `(parent_id, sku)` en `*_items` + helper `dedupePorSku` en 4 actions. **Bug 11**: `liquidarONTAction` valida que la OS pertenezca al técnico antes de cruzar. **Bug 12**: `fetchInventory` con fallback de precio (snap si >0, si no precio actual del SKU).
+</Update>
+
 <Update label="2026-05-20" description="Endurecimiento y atomicidad" tags={["seguridad", "stock", "auditoría"]}>
 ## Bloque medio
 - `f005cb6` — EMU pagada-parcial · folio race · `createOS` atómico.

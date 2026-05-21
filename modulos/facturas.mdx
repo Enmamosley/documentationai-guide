@@ -11,6 +11,10 @@ description: CFDIs que WCG emite a CARSO · ruta /facturas, /facturas/[id]
   No confundir con "facturas recibidas". WCG **no** compra material externo — CARSO surte vía remisión. Las facturas que importan acá son las que WCG **emite** a CARSO para cobrar.
 </Callout>
 
+<Callout kind="info">
+  La tabla en BD es **`facturas_emitidas`** (enum `factura_emitida_estado`). La tabla legacy `facturas` (con enum `factura_estado`) fue eliminada en el commit `60248f3` (Bug 13). Ya sólo existe una tabla de facturas en el sistema.
+</Callout>
+
 ## Ciclo de vida (10 estados)
 
 ```

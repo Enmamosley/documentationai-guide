@@ -16,28 +16,42 @@ description: Esquema Supabase, tablas, triggers, helpers.
 | Tabla | PK | Filas iniciales | Notas |
 |---|---|---|---|
 | `tecnicos` | text (`T-014`, …) | 6 | Padrón de técnicos |
+| `tecnicos_expediente` | tecnico_id | 6 | PII (RFC/CURP/IMSS/INE) + `foto_url` |
 | `almacenes` | text (`ALM-VC`, …) | 3 | Sedes físicas |
 | `skus` | text (clave AXAPTA) | 46 | Incluye `siatel`, `factor_alta_ftth`, `factor_mig_ftth`, `factor_mig_ftth_vieja`. **34 reales** + 12 mock históricos |
 | `os` | uuid | 86 | Estado enum, FK a `tecnicos` |
+| `os_materiales` | uuid | varía | Partidas por OS (heredan RLS de la OS padre) |
 | `onts` | text (alfanumérico) | 120 | FK a `almacenes`, `tecnicos`, `os` |
-| `inventory` | (sku, almacen_id OR tecnico_id) | 63 | XOR: una fila es de almacén **o** mochila |
-| `facturas` | uuid | 28 | Enum de 10 estados |
-| `remisiones` | text (número CARSO) | varía | Estado en tránsito/recibida/confirmada |
+| `inventory` | (sku, almacen_id OR tecnico_id) | 63 | XOR: una fila es de almacén **o** mochila. UNIQUE `(sku, COALESCE(almacen_id,''), COALESCE(tecnico_id,''))` |
+| `facturas_emitidas` | uuid | 28 | Enum `factura_emitida_estado` de 10 estados (WCG → CARSO) |
+| `remisiones` | uuid | varía | Estado `Recibida` → `Confirmada` (default `Recibida`) |
+| `remision_items` | uuid | — | UNIQUE `(remision_id, sku)` (Bug 10) |
+| `devoluciones` · `devolucion_items` | uuid | — | UNIQUE `(parent_id, sku)` |
+| `traspasos` · `traspaso_items` | uuid | — | Movimientos entre almacenes WCG (`traspaso_estado` con `En tránsito` válido) |
+| `salidas_tecnico` · `salida_tecnico_items` | uuid | — | UNIQUE `(parent_id, sku)` (kit semanal) |
 | `emu_rows` | uuid | varía | Cobranza semanal técnico × concepto |
-| `oc_candidates` | uuid | 6 | Legacy del flujo original (no se usa) |
-| `user_profiles` | uuid (FK `auth.users`) | 1+ | Rol enum (admin/almacenista/operaciones/contable/tecnico) |
+| `documentos` | uuid | varía | Repo central; opcional `tecnico_id` u `os_id` para scope |
+| `programas_obra` · `programa_dias` | uuid | varía | Gantt semanal CARSO |
+| `user_profiles` | uuid (FK `auth.users`) | 1+ | Rol enum (admin/almacenista/operaciones/contable/tecnico), `tecnico_id` opcional |
+
+<Callout kind="info">
+  La tabla legacy `facturas` (enum `factura_estado`) y el estado `En tránsito` del enum `remision_estado` fueron eliminados en el commit `60248f3` (Bugs 9 y 13). Ya no aparecen en `database.types.ts`.
+</Callout>
 
 ## Enums
 
 ```sql
-estado_os: 'Capturada' | 'Liquidada' | 'Facturada' | 'Pagada' | 'Cancelada'
-estado_ont: 'En almacén' | 'Con técnico' | 'Liquidada' | 'Facturada' | 'Dañada'
-estado_factura: 'Borrador' | 'Emitida' | 'Enviada al lote' |
-                'En revisión CARSO' | 'Aceptada' | 'Rechazada' |
-                'Por pagar' | 'Pagada parcial' | 'Pagada' | 'Cancelada'
-estado_remision: 'En tránsito' | 'Recibida' | 'Confirmada'
+os_estado: 'Capturada' | 'Liquidada' | 'Facturada' | 'Pagada' | 'Cancelada'
+ont_estado: 'En almacén' | 'Con técnico' | 'Liquidada' | 'Facturada' | 'Dañada'
+factura_emitida_estado:
+  'Borrador' | 'Emitida' | 'Enviada al lote' | 'En revisión CARSO' |
+  'Aceptada' | 'Rechazada' | 'Por pagar' | 'Pagada parcial' |
+  'Pagada' | 'Cancelada'
+remision_estado: 'Recibida' | 'Confirmada'              -- default 'Recibida'
+traspaso_estado: 'Borrador' | 'En tránsito' | 'Recibido' -- 'En tránsito' SÍ es válido acá
 tipo_telmex: 'alta_ftth' | 'migracion_ftth' | 'migracion_ftth_vieja' | 'no_aplica'
 user_role: 'admin' | 'almacenista' | 'operaciones' | 'contable' | 'tecnico'
+estado_cobro: 'pendiente' | 'facturado' | 'cobrado' | 'rechazado'
 ```
 
 ## RLS (Row-Level Security)
@@ -48,14 +62,24 @@ user_role: 'admin' | 'almacenista' | 'operaciones' | 'contable' | 'tecnico'
 
 ### Lectura
 
-Todas las tablas tienen una policy uniforme:
+<Callout kind="alert" collapsed="false">
+  **Cambio importante (commit `d141f9f`, parche D).** Antes de este commit, casi todas las tablas tenían una policy uniforme `USING (true)`, lo que permitía que un técnico leyera expedientes ajenos, facturas, etc. vía `supabase-client` desde devtools. Ahora las SELECT policies están endurecidas por rol y ownership.
+</Callout>
 
-```sql
-CREATE POLICY <tabla>_select_all ON <tabla>
-  FOR SELECT TO authenticated USING (true);
-```
+| Tabla | Quién puede SELECT |
+|---|---|
+| `tecnicos_expediente` | admin/operaciones/contable todos · técnico **sólo el suyo** |
+| `facturas_emitidas` | admin/contable |
+| `documentos` | operativos todos · técnico **sólo los vinculados a él o a una OS suya** |
+| `os` · `onts` · `emu_rows` · `inventory` | admin/operaciones/almacenista (+contable según) · técnico **filtrado por su `tecnico_id`** |
+| `os_materiales` · `*_items` | heredado del parent table vía subquery |
+| `remisiones` · `devoluciones` · `traspasos` · `salidas_tecnico` | operativos · técnico ve las suyas cuando aplica |
+| `tecnicos_herramienta` · `tecnicos_vehiculo` | admin/operaciones/contable · técnico **la suya** |
+| `user_profiles` | admin todos · resto **sólo su propio profile** |
+| `programas_obra` · `programa_dias` | admin/operaciones |
+| Catálogos puros (`skus`, `almacenes`, `tecnicos`, `copes`, `tipos_tarea`, `empresas_empleadoras`, `emu_conceptos`, `unidades_medida`, `clientes`, `empresa_config`) | `to authenticated using (true)` — son data de referencia sin la cual nada funciona |
 
-Cualquier usuario autenticado puede leer todo. Sin sesión → no ve nada.
+Para ver "asignado a X" desde un contexto distinto a `/sistema`, usar el RPC `list_users_for_admin` en vez de leer `user_profiles` directo.
 
 ### Mutaciones
 
@@ -64,10 +88,11 @@ Cada tabla tiene policies por rol via `current_user_role()`:
 | Tabla | INSERT | UPDATE |
 |---|---|---|
 | `os` | admin · operaciones · tecnico (suya) | admin · operaciones · tecnico (suya) |
-| `onts` | admin · almacenista | admin · operaciones · almacenista · tecnico (asignada) |
-| `facturas` | admin · contable | admin · contable |
+| `onts` | admin · almacenista | admin · operaciones · almacenista · tecnico (asignada — `liquidarONTAction` valida ownership de la OS, Bug 11) |
+| `facturas_emitidas` | admin · contable | admin · contable |
 | `inventory` | admin · almacenista | admin · almacenista (vía triggers atómicos) |
 | `remisiones` | admin · almacenista · operaciones | admin · almacenista |
+| `*_items` (remision/devolucion/traspaso/salida_tecnico) | mismo rol que el parent · UNIQUE `(parent_id, sku)` (Bug 10) | igual |
 | `emu_rows` | trigger SQL (auto al liquidar OS) | admin · contable |
 | `user_profiles` | admin | admin |
 

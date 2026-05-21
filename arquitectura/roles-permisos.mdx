@@ -106,7 +106,7 @@ admin · almacenista · operaciones · contable · tecnico
 
 ## Por qué el técnico ve sólo lo suyo
 
-Para el rol `tecnico`, las RLS policies relevantes filtran por `auth.uid()`:
+Para el rol `tecnico`, las RLS policies relevantes filtran por `auth.uid()`. Esto aplica **tanto a SELECT como a INSERT/UPDATE** desde el parche D (commit `d141f9f`):
 
 ```sql
 CREATE POLICY tecnico_only_self ON os
@@ -120,7 +120,11 @@ CREATE POLICY tecnico_only_self ON os
   );
 ```
 
-Esto se replica en `onts`, `emu_rows`, etc. El técnico no necesita filtros en la UI — Postgres ya devuelve sólo sus filas.
+Esto se replica en `onts`, `emu_rows`, `inventory`, `tecnicos_expediente`, `tecnicos_herramienta`, `tecnicos_vehiculo`, `documentos`, etc. El técnico no necesita filtros en la UI — Postgres ya devuelve sólo sus filas.
+
+<Callout kind="alert">
+  **Antes** del parche D, casi todas las tablas tenían `USING (true)` en SELECT. Un técnico podía leer expedientes ajenos, facturas y documentos via `supabase-client` desde devtools. Ahora las SELECT policies son por rol/ownership. Ver detalle en [Base de datos · RLS](/arquitectura/base-de-datos#rls-row-level-security).
+</Callout>
 
 ## Bug 4: escalation de rol cerrado
 

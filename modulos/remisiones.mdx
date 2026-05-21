@@ -15,31 +15,32 @@ CARSO surte el material que WCG necesita para operar. Cada envío llega con un *
 
 <Columns cols={3}>
   <Card title="/remisiones" icon="list">
-    Listado con tabs por estado: En tránsito · Recibida · Confirmada.
+    Listado con tabs por estado: Recibida · Confirmada.
   </Card>
   <Card title="/remisiones/nueva" icon="plus">
     Registrar manualmente una remisión nueva (formato CARSO).
   </Card>
   <Card title="/remisiones/[numero]" icon="file-text">
-    Detalle con partidas, recepción y vale imprimible.
+    Detalle con partidas, confirmación y vale imprimible.
   </Card>
 </Columns>
 
 ## Flujo
 
 ```
-En tránsito  →  Recibida  →  Confirmada
+Recibida  →  Confirmada
 ```
 
+<Callout kind="info">
+  El estado **"En tránsito"** se eliminó en el commit `60248f3` (Bug 9). Era código muerto — el flow real arranca cuando el almacenista registra la remisión, momento en el que CARSO ya entregó físicamente. La remisión nace en `Recibida` por default.
+</Callout>
+
 <Steps>
-  <Step title="Registrar" icon="plus" title-type="p">
-    El almacenista crea la remisión con el detalle del documento CARSO antes o cuando llega el camión.
-  </Step>
-  <Step title="Recibir" icon="package" title-type="p">
-    Confirma físicamente que la cantidad coincide. Marca como "Recibida".
+  <Step title="Registrar (Recibida)" icon="plus" title-type="p">
+    El almacenista crea la remisión con el detalle del documento CARSO. Nace en estado `Recibida` por default.
   </Step>
   <Step title="Confirmar" icon="check-circle" title-type="p">
-    Cierra el ciclo: incrementa stock atómicamente en el almacén destino. Genera un vale interno imprimible.
+    Cierra el ciclo: incrementa stock atómicamente en el almacén destino (`stock_cargado_at` se sella). Genera un vale interno imprimible.
   </Step>
 </Steps>
 
@@ -48,8 +49,7 @@ En tránsito  →  Recibida  →  Confirmada
 | Acción | Roles |
 |---|---|
 | Registrar remisión | admin, almacenista, operaciones |
-| Recibir | admin, **almacenista** |
-| Confirmar | admin, **almacenista** |
+| Confirmar (carga stock) | admin, **almacenista** |
 
 ## Vale imprimible
 
@@ -58,8 +58,11 @@ En tránsito  →  Recibida  →  Confirmada
 ## Server Actions
 
 ```
-src/lib/actions/remisiones.ts
-  crearRemisionAction(numero, almacenDestino, items[])
-  recibirRemisionAction(numero)
-  confirmarRemisionAction(numero)      # ← incrementa stock atómicamente
+src/lib/actions/almacen-movs.ts
+  crearRemisionAction(input)           # nace en "Recibida"
+  confirmarRemisionAction(remisionId)  # ← incrementa stock atómicamente
 ```
+
+<Callout kind="info">
+  `marcarRemisionRecibidaAction` se eliminó junto con el estado "En tránsito".
+</Callout>

@@ -31,6 +31,8 @@ agregarPartidaAction(osId, sku, qty): Promise<void>
 ```typescript
 asignarONTAction(alfanumerico, tecnicoId): Promise<void>
 liquidarONTAction(alfanumerico, osId): Promise<void>
+  // Bug 11: si rol=tecnico, valida que la OS objetivo le pertenezca
+  // antes de marcar la ONT como liquidada.
 marcarONTDanadaAction(alfanumerico, motivo): Promise<void>
 capturarLoteAction(rows: ONTLoteInput[]): Promise<{ insertadas, errores }>
 ```
@@ -44,21 +46,26 @@ cambiarEstadoFacturaAction(facturaId, nuevoEstado, motivo?): Promise<void>
 marcarPagadaAction(facturaId, fechaPago): Promise<void>
 ```
 
-### `actions/remisiones.ts`
-
-```typescript
-crearRemisionAction(numero, almacenDestino, items[]): Promise<void>
-recibirRemisionAction(numero): Promise<void>
-confirmarRemisionAction(numero): Promise<void>   // ← incrementa stock
-```
-
 ### `actions/almacen-movs.ts`
 
 ```typescript
-surtirAction(tecnicoId, items[]): Promise<void>
-traspasoAction(srcAlmacen, dstAlmacen, items[]): Promise<void>
-devolucionAction(tecnicoId, items[]): Promise<void>
+// Remisiones (CARSO → WCG)
+crearRemisionAction(input): Promise<ActionResult>      // nace en "Recibida"
+confirmarRemisionAction(remisionId): Promise<ActionResult>   // ← incrementa stock
+
+// Movimientos internos
+crearSalidaTecnicoAction(input)   // kit semanal (surtir)
+crearTraspasoAction(input)        // entre almacenes WCG
+crearDevolucionAction(input)      // técnico → almacén
+
+// Helper privado: dedupePorSku — si la UI manda dos veces el mismo SKU,
+// suma cantidades antes del INSERT (evita unique_violation por UNIQUE
+// (parent_id, sku) recién agregado en *_items, Bug 10).
 ```
+
+<Callout kind="info">
+  `marcarRemisionRecibidaAction` se eliminó junto con el estado `En tránsito` de `remision_estado` (commit `60248f3`, Bug 9).
+</Callout>
 
 ### `actions/emu.ts`
 
@@ -74,6 +81,12 @@ marcarRechazadaEMUAction(emuId, motivo): Promise<void>
 actualizarExpedienteAction(tecnicoId, data): Promise<void>   // admin-only
 asignarHerramientaAction(tecnicoId, items[]): Promise<void>
 asignarVehiculoAction(tecnicoId, placa, marca, modelo): Promise<void>
+
+// Foto del técnico (storage privado wcg-docs/tecnico-fotos/<id>.<ext>)
+subirFotoTecnicoAction(tecnicoId, formData): Promise<ActionResult>
+  // admin · operaciones · image/* hasta 5 MB · upsert para reemplazar
+eliminarFotoTecnicoAction(tecnicoId): Promise<ActionResult>
+  // sólo admin · NULL el campo + remove() el blob
 ```
 
 ### `actions/users.ts`
